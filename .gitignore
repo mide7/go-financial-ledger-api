@@ -1,0 +1,40 @@
+# Binaries and build output
+bin/
+dist/
+/pkg/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test artifacts and coverage reports
+*.test
+*.out
+coverage.txt
+profile.out
+
+# Dependency vendor directory
+# Uncomment if you build without vendoring dependencies in git
+# vendor/
+
+# Environment and secret files
+.env
+.env.*
+!.env.example
+
+# IDEs and Text Editors
+.idea/
+.vscode/
+*.swp
+*~
+*.sublime-workspace
+
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

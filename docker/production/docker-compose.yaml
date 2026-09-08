@@ -1,0 +1,9 @@
+services:
+  app:
+    build:
+      context: ../..                              # Points up to project root
+      dockerfile: docker/production/Dockerfile    # Relative to context
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - ../../.env                               # Points up to root .env file

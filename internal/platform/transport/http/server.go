@@ -9,26 +9,33 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres"
+	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/db"
+	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handlers"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/middlewares"
 )
 
 type HttpServer struct {
 	port    string
-	handler *Handler
+	handler *handlers.Handler
 	server  *http.Server
 	dbPool  *pgxpool.Pool
 }
 
 func NewHttpServer(port string, pool *pgxpool.Pool) *HttpServer {
+	d := db.New(pool)
 	return &HttpServer{
 		port:    port,
-		handler: NewHandler(),
+		handler: handlers.NewHandler(d),
 		dbPool:  pool,
 	}
 }
 
 func (s *HttpServer) Load() http.Handler {
 	router := http.NewServeMux()
+
+	v1Handler := RegisterV1Routes(s.handler)
+
+	router.Handle("/api/v1/", http.StripPrefix("/api/v1", v1Handler))
 
 	return router
 }

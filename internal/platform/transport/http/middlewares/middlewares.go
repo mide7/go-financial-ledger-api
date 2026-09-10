@@ -9,6 +9,7 @@ import (
 type contextKey string
 
 const SkipJSONResponse contextKey = "skipJSONResponse"
+const HeaderResponseMessage string = "X-Response-Message"
 
 type Middleware func(http.Handler) http.Handler
 

@@ -7,8 +7,8 @@ type CreateAccountDTO struct {
 }
 
 type ListAccountsDTO struct {
-	Page     int    `json:"page" validate:"omitempty,gte=1"`
-	Limit    int    `json:"limit" validate:"omitempty,gte=1,lte=100"`
-	Currency string `json:"currency" validate:"omitempty,len=3,uppercase"`
-	Type     string `json:"type" validate:"omitempty,oneof=USER_WALLET PLATFORM_ESCROW_LIABILITY PLATFORM_FEE_REVENUEMERCHANT_PAYABLE"`
+	Page     int    `form:"page" validate:"omitempty,gte=1"`
+	Limit    int    `form:"limit" validate:"omitempty,gte=1,lte=100"`
+	Currency string `form:"currency" validate:"omitempty,len=3,uppercase"`
+	Type     string `form:"type" validate:"omitempty,oneof=USER_WALLET PLATFORM_ESCROW_LIABILITY PLATFORM_FEE_REVENUEMERCHANT_PAYABLE"`
 }

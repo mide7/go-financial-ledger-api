@@ -15,6 +15,7 @@ type FieldError struct {
 	Message string `json:"message"`
 }
 
+// WriteValidationErrors writes a FieldError array to the response writer.
 func WriteValidationErrors(w http.ResponseWriter, err error) {
 	details := FormatValidationErrors(err)
 
@@ -25,6 +26,7 @@ func WriteValidationErrors(w http.ResponseWriter, err error) {
 	_ = json.NewEncoder(w).Encode(details)
 }
 
+// FormatValidationErrors converts a go-playground/validator error to a FieldError array.
 func FormatValidationErrors(err error) []FieldError {
 	var ve validator.ValidationErrors
 	if !errors.As(err, &ve) {

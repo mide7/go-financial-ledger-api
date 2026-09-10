@@ -28,43 +28,53 @@ func JSONResponse(next http.Handler) http.Handler {
 		// Pass the wrapped writer down the chain
 		next.ServeHTTP(wrapped, r)
 
-		// If handler opted out, flush the buffer as-is and return
-		if r.Context().Value(SkipJSONResponse) == true {
-			for key, vals := range wrapped.Header() {
-				for _, val := range vals {
-					w.Header().Add(key, val)
-				}
+		// Copy headers set by downstream handlers to the underlying ResponseWriter
+		for key, vals := range wrapped.Header() {
+			for _, val := range vals {
+				w.Header().Add(key, val)
 			}
+		}
+
+		// If handler opted out, flush the buffer as-is and return
+		if skip, ok := r.Context().Value(SkipJSONResponse).(bool); ok && skip {
 			w.WriteHeader(wrapped.statusCode)
 			w.Write(wrapped.body.Bytes())
 			return
 		}
 
-		// Parse whatever the inner handler wrote
-		var data any
-		var errs any
-		innerBody := wrapped.body.Bytes()
+		// Extract custom message if set by handler, otherwise default to http.StatusText
+		message := wrapped.Header().Get(HeaderResponseMessage)
+		w.Header().Del(HeaderResponseMessage)
+		if message == "" {
+			message = http.StatusText(wrapped.statusCode)
+		}
 
+		// Safely process inner body without double-encoding
+		var parsedPayload any
+		innerBody := bytes.TrimSpace(wrapped.body.Bytes())
+
+		if len(innerBody) > 0 {
+			if json.Valid(innerBody) {
+				// Keeps inner JSON structure (objects, arrays, strings) intact
+				parsedPayload = json.RawMessage(innerBody)
+			} else {
+				// Fallback for plain-text response bodies
+				parsedPayload = string(innerBody)
+			}
+		}
+
+		// 3. Assign payload to Data (2xx/3xx) or Errors (4xx/5xx)
+		var data, errs any
 		if wrapped.statusCode >= 400 {
-			// If it's an error status, treat inner body as the errors field
-			if len(innerBody) > 0 {
-				errs = string(innerBody)
-			}
+			errs = parsedPayload
 		} else {
-			// If it's a success status, try to parse JSON, otherwise treat as raw string/bytes
-			if len(innerBody) > 0 {
-				if json.Valid(innerBody) {
-					data = json.RawMessage(innerBody) // Keeps inner JSON formatted nicely
-				} else {
-					data = string(innerBody)
-				}
-			}
+			data = parsedPayload
 		}
 
 		// Build your unified structure
 		response := StandardResponse{
 			Status:    wrapped.statusCode,
-			Message:   http.StatusText(wrapped.statusCode),
+			Message:   message,
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 			Data:      data,
 			Errors:    errs,

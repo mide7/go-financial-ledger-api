@@ -1,36 +1,27 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/dto"
-	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/validation"
-	"github.com/mide7/go-financial-ledger-api/internal/validator"
+	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/httputil"
 )
 
 func (h *Handler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateAccountDTO
 
-	if err := json.NewDecoder(r.Body); err != nil {
-		http.Error(w, "invalid JSON body", http.StatusBadRequest)
-		return
-	}
-
-	if err := validator.Struct(&req); err != nil {
-		validation.WriteValidationErrors(w, err)
+	if err := httputil.DecodeAndValidate(r, &req); err != nil {
+		httputil.Error(w, err)
 		return
 	}
 
 	account, err := h.accountService.CreateAccount(r.Context(), req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httputil.Error(w, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(account)
+	httputil.JSONMsg(w, http.StatusCreated, "account created", account)
 }
 
 func (h *Handler) GetAccountDetails(w http.ResponseWriter, r *http.Request) {

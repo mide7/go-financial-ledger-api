@@ -7,3 +7,5 @@ services:
       - "${PORT:-8080}:8080"
     env_file:
       - ../../.env                               # Points up to root .env file
+    init: true                                  # ✅ Run migrations on startup  
+    stop_grace_period: 30s                      # ✅ Wait 30 seconds before forcefully killing the container

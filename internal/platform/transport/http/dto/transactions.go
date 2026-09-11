@@ -8,9 +8,21 @@ type CreateTransactionDTO struct {
 	Metadata    string `json:"metadata" validate:"omitempty"`
 }
 
+type GetTransactionDetailsDTO struct {
+	ID string `form:"id" validate:"required,uuid"`
+}
+
 type ListTransactionsDTO struct {
-	Page   int    `json:"page" validate:"omitempty,gte=1"`
-	Limit  int    `json:"limit" validate:"omitempty,gte=1,lte=100"`
-	Type   string `json:"type" validate:"omitempty,min=1,max=64"`
-	Status string `json:"status" validate:"omitempty,oneof=POSTED REVERSED FAILED"`
+	Page   int    `form:"page" validate:"omitempty,gte=1"`
+	Limit  int    `form:"limit" validate:"omitempty,gte=1,lte=100"`
+	Type   string `form:"type" validate:"omitempty,min=1,max=64"`
+	Status string `form:"status" validate:"omitempty,oneof=POSTED REVERSED FAILED"`
+}
+
+type ReverseTransactionDTO struct {
+	ID string `form:"id" validate:"required,uuid"`
+}
+
+type GetTransactionEntriesDTO struct {
+	ID string `form:"id" validate:"required,uuid"`
 }

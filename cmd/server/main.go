@@ -10,43 +10,58 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mide7/go-financial-ledger-api/internal/config"
-	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres"
+	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/db"
 	transportHttp "github.com/mide7/go-financial-ledger-api/internal/platform/transport/http"
+	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handlers"
+	"github.com/mide7/go-financial-ledger-api/internal/services"
 )
 
 func main() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	pool, err := postgres.NewPostgresStorage(ctx)
-
+	pool, err := pgxpool.New(ctx, config.ENVS.DATABASE_URL)
 	if err != nil {
+		slog.Error("failed to create database connection pool", "err", err)
 		os.Exit(1)
 	}
 	defer pool.Close()
 
-	err = postgres.InitStorage(ctx, pool)
+	err = pool.Ping(ctx)
 	if err != nil {
+		slog.Error("unable to ping database", "err", err)
 		os.Exit(1)
 	}
+	slog.Info("✅ database connection pool ping successful")
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	queries := db.New(pool)
+	accountService := services.NewAccountService(queries)
+	transactionService := services.NewTransactionService(queries)
+	handler := handlers.NewHandler(accountService, transactionService, pool)
 
 	port := config.ENVS.PORT
-	slog.Info("server starting on", "port", port)
-	httpServer := transportHttp.NewHttpServer(port, pool)
+	router := transportHttp.NewRouter(handler)
+	httpServer := transportHttp.NewHttpServer(port, router)
 
 	go func() {
-		if err = httpServer.Start(httpServer.Load()); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err = httpServer.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("failed to start HTTP server", "err", err)
-			os.Exit(1)
+			stop()
 		}
 	}()
 
-	sig := <-sigChan
-	slog.Warn("🚨 received shutdown", "signal", sig.String())
+	<-ctx.Done()
 
-	httpServer.Stop()
+	slog.Warn("⏳ initiating graceful shutdown sequence...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err = httpServer.Stop(shutdownCtx); err != nil {
+		slog.Error("failed to gracefully shutdown HTTP server", "err", err)
+	}
+
+	slog.Warn("✅ graceful shutdown complete")
 }

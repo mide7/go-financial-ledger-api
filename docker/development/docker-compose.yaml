@@ -7,3 +7,8 @@ services:
       - "${PORT:-8080}:8080"
     env_file:
       - ../../.env                               # Points up to root .env file
+    volumes:
+      - ../..:/app                                # Mount project root to container WORKDIR
+      - /app/tmp
+    init: true                                    # ✅ Forwards signals (SIGTERM/SIGINT) directly to your app
+    stop_grace_period: 30s                        # ✅ Gives your app up to 30 seconds to clean up

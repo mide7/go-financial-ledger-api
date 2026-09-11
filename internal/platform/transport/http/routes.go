@@ -6,6 +6,15 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handlers"
 )
 
+func NewRouter(h *handlers.Handler) http.Handler {
+	router := http.NewServeMux()
+
+	v1Handler := RegisterV1Routes(h)
+	router.Handle("/api/v1/", http.StripPrefix("/api/v1", v1Handler))
+
+	return router
+}
+
 func RegisterV1Routes(h handlers.IHandler) http.Handler {
 	router := http.NewServeMux()
 

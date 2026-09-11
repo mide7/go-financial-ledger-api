@@ -74,8 +74,8 @@ func Decode(r *http.Request, v any, sources ...Source) error {
 }
 
 // DecodeAndValidate decodes the JSON body and immediately runs validation on it.
-func DecodeAndValidate(r *http.Request, v any) error {
-	if err := Decode(r, v); err != nil {
+func DecodeAndValidate(r *http.Request, v any, sources ...Source) error {
+	if err := Decode(r, v, sources...); err != nil {
 		return err
 	}
 	if err := validator.Struct(v); err != nil {

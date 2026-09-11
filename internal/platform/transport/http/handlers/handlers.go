@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/db"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mide7/go-financial-ledger-api/internal/services"
 )
 
@@ -29,11 +29,13 @@ type IHandler interface {
 type Handler struct {
 	accountService     services.IAccountService
 	transactionService services.ITransactionService
+	dbPool             *pgxpool.Pool
 }
 
-func NewHandler(d db.Querier) *Handler {
+func NewHandler(accountService services.IAccountService, transactionService services.ITransactionService, dbPool *pgxpool.Pool) *Handler {
 	return &Handler{
-		accountService:     services.NewAccountService(d),
-		transactionService: services.NewTransactionService(d),
+		accountService:     accountService,
+		transactionService: transactionService,
+		dbPool:             dbPool,
 	}
 }

@@ -15,7 +15,7 @@ func Recovery(next http.Handler) http.Handler {
 				// Capture stack trace for debugging
 				stack := debug.Stack()
 
-				slog.Error("Panic recovered in request handler",
+				slog.Error("panic recovered in request handler",
 					"error", err,
 					"method", r.Method,
 					"path", r.URL.Path,

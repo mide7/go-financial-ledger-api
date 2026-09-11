@@ -9,15 +9,16 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
-	postgresStorage "github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres"
+	"github.com/mide7/go-financial-ledger-api/internal/config"
 )
 
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pool, err := postgresStorage.NewPostgresStorage(ctx)
+	pool, err := pgxpool.New(ctx, config.ENVS.DATABASE_URL)
 	if err != nil {
 		slog.Error("failure while connecting to database via pgxpool: %v", err)
 		os.Exit(1)

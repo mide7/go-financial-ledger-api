@@ -4,10 +4,11 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/mide7/go-financial-ledger-api/internal/services"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
 )
 
-type IHandler interface {
+type Handler interface {
 	// Health
 	HealthCheck(w http.ResponseWriter, r *http.Request)
 	// Accounts
@@ -17,23 +18,24 @@ type IHandler interface {
 	GetAccountBalance(w http.ResponseWriter, r *http.Request)
 	GetAccountStatement(w http.ResponseWriter, r *http.Request)
 	GetAccountEntries(w http.ResponseWriter, r *http.Request)
+	ReconcileAccount(w http.ResponseWriter, r *http.Request)
+	CreateAccountSnapshot(w http.ResponseWriter, r *http.Request)
 
 	// Transactions
 	CreateTransaction(w http.ResponseWriter, r *http.Request)
 	GetTransactionDetails(w http.ResponseWriter, r *http.Request)
 	ListTransactions(w http.ResponseWriter, r *http.Request)
 	ReverseTransaction(w http.ResponseWriter, r *http.Request)
-	GetTransactionEntries(w http.ResponseWriter, r *http.Request)
 }
 
-type Handler struct {
-	accountService     services.IAccountService
-	transactionService services.ITransactionService
+type handler struct {
+	accountService     account.Service
+	transactionService transaction.Service
 	dbPool             *pgxpool.Pool
 }
 
-func NewHandler(accountService services.IAccountService, transactionService services.ITransactionService, dbPool *pgxpool.Pool) *Handler {
-	return &Handler{
+func NewHandler(accountService account.Service, transactionService transaction.Service, dbPool *pgxpool.Pool) Handler {
+	return &handler{
 		accountService:     accountService,
 		transactionService: transactionService,
 		dbPool:             dbPool,

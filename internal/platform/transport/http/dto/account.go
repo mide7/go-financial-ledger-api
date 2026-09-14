@@ -1,5 +1,7 @@
 package dto
 
+import "time"
+
 type CreateAccountDTO struct {
 	OwnerId  string `json:"owner_id" validate:"required,min=1,max=64"`
 	Type     string `json:"type" validate:"required,oneof=USER_WALLET PLATFORM_ESCROW_LIABILITY PLATFORM_FEE_REVENUE MERCHANT_PAYABLE"`
@@ -27,4 +29,15 @@ type GetAccountStatementDTO struct {
 
 type GetAccountEntriesDTO struct {
 	ID string `form:"id" validate:"required,uuid"`
+}
+
+type ReconcileAccountDTO struct {
+	ID            string    `form:"id" validate:"required,uuid"`
+	AsOfTimestamp time.Time `json:"as_of_timestamp" validate:"omitempty"`
+}
+
+type CreateAccountSnapshotDTO struct {
+	ID                  string `form:"id" validate:"required,uuid"`
+	TargetEntrySequence int64  `json:"target_entry_sequence" validate:"omitempty,gte=1"`
+	Reason              string `json:"reason" validate:"required,min=1,max=128"`
 }

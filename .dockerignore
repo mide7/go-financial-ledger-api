@@ -6,6 +6,7 @@
 # Local binaries and build outputs
 bin/
 dist/
+tmp/
 *.exe
 *.test
 *.out

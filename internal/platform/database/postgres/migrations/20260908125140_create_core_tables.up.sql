@@ -23,12 +23,11 @@ CREATE TABLE IF NOT EXISTS transactions (
     reference VARCHAR(128) UNIQUE NOT NULL,
     -- e.g., 'TICKET_PURCHASE', 'ESCROW_RELEASE', 'REFUND'
     type VARCHAR(64) NOT NULL,
-    status VARCHAR(32) NOT NULL DEFAULT 'POSTED',
+    currency VARCHAR(3) NOT NULL DEFAULT 'NGN',
+    parent_transaction_id UUID NULL REFERENCES transactions(id) ON DELETE RESTRICT,
     description TEXT NOT NULL DEFAULT '',
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    --
-    CONSTRAINT chk_transaction_status CHECK (status IN ('POSTED', 'REVERSED'))
 );
 -- 3. Ledger Entries Table
 CREATE TABLE IF NOT EXISTS entries (

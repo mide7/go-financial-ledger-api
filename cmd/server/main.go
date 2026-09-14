@@ -12,10 +12,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mide7/go-financial-ledger-api/internal/config"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/db"
+	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/repository"
 	transportHttp "github.com/mide7/go-financial-ledger-api/internal/platform/transport/http"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handlers"
-	"github.com/mide7/go-financial-ledger-api/internal/services"
 )
 
 func main() {
@@ -37,8 +39,11 @@ func main() {
 	slog.Info("✅ database connection pool ping successful")
 
 	queries := db.New(pool)
-	accountService := services.NewAccountService(queries)
-	transactionService := services.NewTransactionService(queries)
+	accountRepository := repository.NewAccountRepository(pool, queries)
+	transactionRepository := repository.NewTransactionRepository(pool, queries)
+
+	accountService := account.NewAccountService(accountRepository)
+	transactionService := transaction.NewTransactionService(transactionRepository)
 	handler := handlers.NewHandler(accountService, transactionService, pool)
 
 	port := config.ENVS.PORT

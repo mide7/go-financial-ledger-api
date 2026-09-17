@@ -5,15 +5,15 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
-	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/db"
+	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/sqlc"
 )
 
 type accountRepository struct {
 	pool    *pgxpool.Pool
-	queries *db.Queries
+	queries *sqlc.Queries
 }
 
-func NewAccountRepository(pool *pgxpool.Pool, queries *db.Queries) account.Repository {
+func NewAccountRepository(pool *pgxpool.Pool, queries *sqlc.Queries) account.Repository {
 	return &accountRepository{
 		pool:    pool,
 		queries: queries,
@@ -21,7 +21,20 @@ func NewAccountRepository(pool *pgxpool.Pool, queries *db.Queries) account.Repos
 }
 
 func (r *accountRepository) Create(ctx context.Context, params account.CreateAccountParams) (*account.Account, error) {
-	return nil, nil
+	createdAccount, err := r.queries.CreateAccount(ctx, sqlc.CreateAccountParams{
+		OwnerID:  params.OwnerID,
+		Type:     params.Type,
+		Currency: params.Currency,
+	})
+
+	if err != nil {
+		if isUniqueViolation(err) {
+			return nil, account.ErrAccountExists
+		}
+		return nil, err
+	}
+
+	return mapToAccountDomain(&createdAccount), nil
 }
 
 func (r *accountRepository) GetByID(ctx context.Context, id string) (*account.Account, error) {

@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.27.0
 
-package db
+package sqlc
 
 import (
 	"context"
@@ -10,7 +10,10 @@ import (
 
 type Querier interface {
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
+	CreateEntries(ctx context.Context, arg []CreateEntriesParams) (int64, error)
+	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
 	GetAccountBalance(ctx context.Context) (int32, error)
+	ListActiveCurrencies(ctx context.Context) ([]ListActiveCurrenciesRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -17,7 +17,7 @@ func (h *handler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	account, err := h.accountService.CreateAccount(r.Context(), account.CreateAccountParams{
-		OwnerId:  req.OwnerId,
+		OwnerID:  req.OwnerID,
 		Type:     req.Type,
 		Currency: req.Currency,
 	})

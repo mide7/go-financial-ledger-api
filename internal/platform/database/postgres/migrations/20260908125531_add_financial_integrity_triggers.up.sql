@@ -33,6 +33,9 @@ RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 -- Statement-level deferred constraint trigger using transition tables
-CREATE CONSTRAINT TRIGGER trg_check_transaction_integrity
+CREATE TRIGGER trg_check_transaction_integrity
 AFTER
-INSERT ON entries REFERENCING NEW TABLE AS new_entries DEFERRABLE INITIALLY DEFERRED FOR EACH STATEMENT EXECUTE FUNCTION func_check_transaction_integrity();
+INSERT ON entries REFERENCING NEW TABLE AS new_entries FOR EACH STATEMENT EXECUTE FUNCTION func_check_transaction_integrity();
+-- CREATE CONSTRAINT TRIGGER trg_check_transaction_integrity
+-- AFTER
+-- INSERT ON entries REFERENCING NEW TABLE AS new_entries DEFERRABLE INITIALLY DEFERRED FOR EACH STATEMENT EXECUTE FUNCTION func_check_transaction_integrity();

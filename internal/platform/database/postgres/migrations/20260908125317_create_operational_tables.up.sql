@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS idempotency_records (
 );
 -- 5. Balance Snapshots Table
 CREATE TABLE IF NOT EXISTS balance_snapshots (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
     balance BIGINT NOT NULL,
     last_entry_sequence BIGINT NOT NULL,

@@ -9,8 +9,6 @@ import (
 )
 
 type Handler interface {
-	// Health
-	HealthCheck(w http.ResponseWriter, r *http.Request)
 	// Accounts
 	CreateAccount(w http.ResponseWriter, r *http.Request)
 	GetAccountDetails(w http.ResponseWriter, r *http.Request)
@@ -28,16 +26,29 @@ type Handler interface {
 	ReverseTransaction(w http.ResponseWriter, r *http.Request)
 }
 
+type HealthCheckHandler interface {
+	// Health
+	HealthCheck(w http.ResponseWriter, r *http.Request)
+}
+
 type handler struct {
 	accountService     account.Service
 	transactionService transaction.Service
-	dbPool             *pgxpool.Pool
 }
 
-func NewHandler(accountService account.Service, transactionService transaction.Service, dbPool *pgxpool.Pool) Handler {
+func NewHandler(accountService account.Service, transactionService transaction.Service) Handler {
 	return &handler{
 		accountService:     accountService,
 		transactionService: transactionService,
-		dbPool:             dbPool,
+	}
+}
+
+type healthCheckHandler struct {
+	dbPool *pgxpool.Pool
+}
+
+func NewHealthCheckHandler(dbPool *pgxpool.Pool) HealthCheckHandler {
+	return &healthCheckHandler{
+		dbPool: dbPool,
 	}
 }

@@ -2,6 +2,8 @@ package transaction
 
 import (
 	"context"
+
+	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 )
 
 type Service interface {
@@ -12,17 +14,36 @@ type Service interface {
 }
 
 type transactionService struct {
-	repo Repository
+	repo             Repository
+	currencyRegistry currency.Registry
 }
 
-func NewTransactionService(repo Repository) Service {
+func NewTransactionService(repo Repository, currencyRegistry currency.Registry) Service {
 	return &transactionService{
-		repo: repo,
+		repo:             repo,
+		currencyRegistry: currencyRegistry,
 	}
 }
 
 func (s *transactionService) CreateTransaction(ctx context.Context, params CreateTransactionParams) (*Transaction, error) {
-	return nil, nil
+	// 1. Execute DTO and domain invariant checks (entry counts, zero amounts, double-entry balancing)
+	if err := params.Validate(); err != nil {
+		return nil, err
+	}
+
+	// 2. Validate currency against the in-memory registry (0ms latency lookup)
+	_, active := s.currencyRegistry.Get(params.Currency)
+	if !active {
+		return nil, ErrInvalidCurrency
+	}
+
+	// 3. Delegate atomic persistence (header + batch entries) to the repository layer
+	createdTx, err := s.repo.Create(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	return createdTx, nil
 }
 
 func (s *transactionService) GetTransactionDetails(ctx context.Context, id string) (*Transaction, error) {

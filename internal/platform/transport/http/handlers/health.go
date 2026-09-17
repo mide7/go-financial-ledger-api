@@ -6,7 +6,7 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/httputil"
 )
 
-func (h *handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
+func (h *healthCheckHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 
 	var dbHealthy bool = true
 	if err := h.dbPool.Ping(r.Context()); err != nil {

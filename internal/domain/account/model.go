@@ -3,6 +3,9 @@ package account
 import (
 	"errors"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 )
 
 var (
@@ -22,18 +25,18 @@ const (
 )
 
 type Account struct {
-	ID        string    `json:"id"`
-	OwnerID   string    `json:"owner_id"`
-	Type      string    `json:"type"`
-	Currency  string    `json:"currency"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uuid.UUID     `json:"id"`
+	OwnerID   string        `json:"owner_id"`
+	Type      string        `json:"type"`
+	Currency  currency.Code `json:"currency"`
+	CreatedAt time.Time     `json:"created_at"`
+	UpdatedAt time.Time     `json:"updated_at"`
 }
 
 // Statement represents a time-windowed financial report for an account.
 type Statement struct {
-	AccountID      string           `json:"account_id"`
-	Currency       string           `json:"currency"`
+	AccountID      uuid.UUID        `json:"account_id"`
+	Currency       currency.Code    `json:"currency"`
 	StartDate      time.Time        `json:"start_date"`
 	EndDate        time.Time        `json:"end_date"`
 	OpeningBalance int64            `json:"opening_balance"`
@@ -45,7 +48,7 @@ type Statement struct {
 
 type StatementEntry struct {
 	ID            string    `json:"id"`
-	TransactionID string    `json:"transaction_id"`
+	TransactionID uuid.UUID `json:"transaction_id"`
 	Type          string    `json:"type"`   // "DEBIT" or "CREDIT"
 	Amount        int64     `json:"amount"` // Minor units
 	EntrySequence int64     `json:"entry_sequence"`
@@ -54,15 +57,15 @@ type StatementEntry struct {
 
 // ReconciliationResult detail audit output.
 type ReconciliationResult struct {
-	AccountID            string    `json:"account_id"`
-	Status               string    `json:"status"` // "RECONCILED" or "DISCREPANCY_DETECTED"
-	Currency             string    `json:"currency"`
-	RawLedgerSum         int64     `json:"raw_ledger_sum"`
-	SnapshotBalance      int64     `json:"snapshot_balance"`
-	DeltaSinceSnapshot   int64     `json:"delta_since_snapshot"`
-	CalculatedTotal      int64     `json:"calculated_total"`
-	DiscrepancyAmount    int64     `json:"discrepancy_amount"`
-	LastSnapshotSequence int64     `json:"last_snapshot_sequence"`
-	CurrentMaxSequence   int64     `json:"current_max_sequence"`
-	ReconciledAt         time.Time `json:"reconciled_at"`
+	AccountID            uuid.UUID     `json:"account_id"`
+	Status               string        `json:"status"` // "RECONCILED" or "DISCREPANCY_DETECTED"
+	Currency             currency.Code `json:"currency"`
+	RawLedgerSum         int64         `json:"raw_ledger_sum"`
+	SnapshotBalance      int64         `json:"snapshot_balance"`
+	DeltaSinceSnapshot   int64         `json:"delta_since_snapshot"`
+	CalculatedTotal      int64         `json:"calculated_total"`
+	DiscrepancyAmount    int64         `json:"discrepancy_amount"`
+	LastSnapshotSequence int64         `json:"last_snapshot_sequence"`
+	CurrentMaxSequence   int64         `json:"current_max_sequence"`
+	ReconciledAt         time.Time     `json:"reconciled_at"`
 }

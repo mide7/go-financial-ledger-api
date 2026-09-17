@@ -1,9 +1,13 @@
 package account
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type CreateAccountParams struct {
-	OwnerId  string
+	OwnerID  string
 	Type     string
 	Currency string
 }
@@ -20,12 +24,12 @@ type ListAccountsParams struct {
 }
 
 type ReconcileAccountParams struct {
-	ID            string
+	ID            uuid.UUID
 	AsOfTimestamp time.Time
 }
 
 type CreateAccountSnapshotParams struct {
-	ID                  string
+	ID                  uuid.UUID
 	TargetEntrySequence int64
 	Reason              string
 }

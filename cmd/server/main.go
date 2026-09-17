@@ -14,8 +14,9 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/config"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
-	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/db"
+	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/repository"
+	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/sqlc"
 	transportHttp "github.com/mide7/go-financial-ledger-api/internal/platform/transport/http"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handlers"
 )
@@ -38,16 +39,25 @@ func main() {
 	}
 	slog.Info("✅ database connection pool ping successful")
 
-	queries := db.New(pool)
+	queries := sqlc.New(pool)
+
+	currencyRegistry, err := postgres.NewCurrencyRegistry(ctx, pool, queries)
+	if err != nil {
+		slog.Error("failed to create currency registry", "err", err)
+		os.Exit(1)
+	}
+
 	accountRepository := repository.NewAccountRepository(pool, queries)
 	transactionRepository := repository.NewTransactionRepository(pool, queries)
 
-	accountService := account.NewAccountService(accountRepository)
-	transactionService := transaction.NewTransactionService(transactionRepository)
-	handler := handlers.NewHandler(accountService, transactionService, pool)
+	accountService := account.NewAccountService(accountRepository, currencyRegistry)
+	transactionService := transaction.NewTransactionService(transactionRepository, currencyRegistry)
+
+	handler := handlers.NewHandler(accountService, transactionService)
+	healthCheckHandler := handlers.NewHealthCheckHandler(pool)
 
 	port := config.ENVS.PORT
-	router := transportHttp.NewRouter(handler)
+	router := transportHttp.NewRouter(handler, healthCheckHandler)
 	httpServer := transportHttp.NewHttpServer(port, router)
 
 	go func() {

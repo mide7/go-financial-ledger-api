@@ -14,6 +14,8 @@ type Querier interface {
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
 	GetAccountBalance(ctx context.Context) (int32, error)
 	ListActiveCurrencies(ctx context.Context) ([]ListActiveCurrenciesRow, error)
+	SeedCurrency(ctx context.Context, arg SeedCurrencyParams) error
+	SeedSystemAccount(ctx context.Context, arg SeedSystemAccountParams) error
 }
 
 var _ Querier = (*Queries)(nil)

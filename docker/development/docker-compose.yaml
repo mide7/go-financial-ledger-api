@@ -1,5 +1,59 @@
 services:
+
+  postgres:
+    image: postgres:18.0-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: financial-ledger-api
+    ports:
+      - "5432:5432"
+    volumes:
+    - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d financial-ledger-api"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  # 2. Ephemeral migration container that runs 'go run ... up' and exits
+  migration:
+    build:
+      context: ../..
+      dockerfile: docker/development/Dockerfile
+    # Adjust this path to match $(CMD_MIGRATE_PATH) relative to container WORKDIR (/app)
+    command: go run ./cmd/migrate up
+    env_file:
+      - ../../.env
+    volumes:
+      - ../..:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no" # Runs once and terminates
+
+  seeder:
+    build:
+      context: ../..
+      dockerfile: docker/development/Dockerfile
+    command: go run ./cmd/seed
+    env_file:
+      - ../../.env
+    volumes:
+      - ../..:/app
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    restart: "no"
   app:
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+      seeder:
+        condition: service_completed_successfully
     build:
       context: ../..                              # Points up to project root
       dockerfile: docker/development/Dockerfile   # Relative to context
@@ -12,3 +66,6 @@ services:
       - /app/tmp
     init: true                                    # ✅ Forwards signals (SIGTERM/SIGINT) directly to your app
     stop_grace_period: 30s                        # ✅ Gives your app up to 30 seconds to clean up
+
+volumes:
+  postgres_data:

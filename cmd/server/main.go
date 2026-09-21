@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -22,29 +23,31 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("❌ service shutdown due to error", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// 1. Initialize DB Pool
 	pool, err := pgxpool.New(ctx, config.ENVS.DATABASE_URL)
 	if err != nil {
-		slog.Error("failed to create database connection pool", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to create connection pool: %w", err)
 	}
 	defer pool.Close()
 
-	err = pool.Ping(ctx)
-	if err != nil {
-		slog.Error("unable to ping database", "err", err)
-		os.Exit(1)
-	}
-	slog.Info("✅ database connection pool ping successful")
+	slog.Info("✅ database connected")
 
+	// 2. Build Dependency Tree
 	queries := sqlc.New(pool)
 
 	currencyRegistry, err := postgres.NewCurrencyRegistry(ctx, pool, queries)
 	if err != nil {
-		slog.Error("failed to create currency registry", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to create currency registry: %w", err)
 	}
 
 	accountRepository := repository.NewAccountRepository(pool, queries)
@@ -60,23 +63,31 @@ func main() {
 	router := transportHttp.NewRouter(handler, healthCheckHandler)
 	httpServer := transportHttp.NewHttpServer(port, router)
 
+	// 3. Start Server with Error Channel
+	serverErr := make(chan error, 1)
 	go func() {
-		if err = httpServer.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("failed to start HTTP server", "err", err)
-			stop()
+		slog.Info("🚀 HTTP server starting", "port", port)
+		if err := httpServer.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
 		}
 	}()
 
-	<-ctx.Done()
+	// 4. Wait for OS Signal or Startup Failure
+	select {
+	case err := <-serverErr:
+		return fmt.Errorf("HTTP server startup failed: %w", err)
+	case <-ctx.Done():
+		slog.Warn("⏳ OS signal received, initiating graceful shutdown sequence...")
+	}
 
-	slog.Warn("⏳ initiating graceful shutdown sequence...")
-
+	// 5. Graceful Shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err = httpServer.Stop(shutdownCtx); err != nil {
-		slog.Error("failed to gracefully shutdown HTTP server", "err", err)
+	if err := httpServer.Stop(shutdownCtx); err != nil {
+		return fmt.Errorf("failed to gracefully shutdown HTTP server: %w", err)
 	}
 
 	slog.Warn("✅ graceful shutdown complete")
+	return nil
 }

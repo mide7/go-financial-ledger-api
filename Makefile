@@ -3,6 +3,7 @@ APP_NAME ?= ledger-service
 BUILD_DIR ?= bin
 CMD_SERVER_PATH ?= ./cmd/server
 CMD_MIGRATE_PATH ?= ./cmd/migrate
+CMD_SEED_PATH ?= ./cmd/seed
 MIGRATION_PATH ?= ./internal/platform/database/postgres/migrations
 GO ?= go
 
@@ -15,7 +16,7 @@ DOCKER_IMAGE ?= $(APP_NAME)
 DOCKER_TAG ?= latest
 PORT ?= 8080
 
-.PHONY: help all build run test test-short lint fmt tidy clean migrate migration migrate-up migrate-down sqlc gen-mocks docker-build docker-build-dev docker-run docker-run-dev docker-compose-up docker-compose-down docker-clean
+.PHONY: help all build run test test-short lint fmt tidy clean migrate migration migrate-up migrate-down sqlc gen-mocks seed docker-build docker-build-dev docker-run docker-run-dev docker-compose-up docker-compose-down docker-clean
 
 # Default target when running just 'make'
 .DEFAULT_GOAL := help
@@ -105,6 +106,15 @@ sqlc:
 gen-mocks:
 	@$(GO) generate ./...
 
+
+############
+## SEEDING
+############
+
+## seed: Seed database with initial data
+seed:
+	@echo "Seeding database..."
+	@$(GO) run $(CMD_SEED_PATH)
 
 
 ###########

@@ -50,14 +50,51 @@ func (r *accountRepository) List(ctx context.Context, params account.ListAccount
 }
 
 // Balance & Audit queries
-func (r *accountRepository) GetBalance(ctx context.Context, accountID string) (int64, error) {
-	return 0, nil
+func (r *accountRepository) GetBalance(ctx context.Context, accountID string) (*account.GetAccountBalanceResult, error) {
+	return nil, nil
 }
 
-func (r *accountRepository) GetStatement(ctx context.Context, accountID string) ([]account.StatementEntry, error) {
+func (r *accountRepository) GetStatementSummary(ctx context.Context, params account.GetStatementSummaryParams) (*account.StatementSummary, error) {
+	return nil, nil
+}
+
+func (r *accountRepository) GetStatementEntries(ctx context.Context, params account.GetStatementEntriesParams) ([]account.StatementEntry, error) {
 	return nil, nil
 }
 
 func (r *accountRepository) Reconcile(ctx context.Context, accountID string) (*account.ReconciliationResult, error) {
+	return nil, nil
+}
+
+// Freeze / hold management
+func (r *accountRepository) FreezeAccount(ctx context.Context, accountID, reason string) error {
+	return nil
+}
+func (r *accountRepository) UnfreezeAccount(ctx context.Context, accountID, resolutionNotes string) error {
+	return nil
+}
+func (r *accountRepository) IsFrozen(ctx context.Context, accountID string) (bool, error) {
+	return false, nil
+}
+func (r *accountRepository) GetFrozenAccounts(ctx context.Context, accountIDs []string) ([]string, error) {
+	return nil, nil
+}
+
+// Discrepancy audit trail
+func (r *accountRepository) InsertDiscrepancyRecord(ctx context.Context, params *account.ReconciliationResult) (*account.DiscrepancyRecord, error) {
+	return nil, nil
+}
+func (r *accountRepository) ListUnresolvedDiscrepancies(ctx context.Context) ([]account.DiscrepancyRecord, error) {
+	return nil, nil
+}
+func (r *accountRepository) ResolveDiscrepancy(ctx context.Context, id, notes string) error {
+	return nil
+}
+
+// Snapshots
+func (r *accountRepository) CreateBalanceSnapshot(ctx context.Context, accountID string) (*account.BalanceSnapshot, error) {
+	return nil, nil
+}
+func (r *accountRepository) GetLatestSnapshot(ctx context.Context, accountID string) (*account.BalanceSnapshot, error) {
 	return nil, nil
 }

@@ -11,3 +11,6 @@ DROP INDEX IF EXISTS idx_entries_account_sequence_type_amount;
 -- Core Ledger Lookup & Composite Indexes
 DROP INDEX IF EXISTS idx_entries_transaction_id;
 DROP INDEX IF EXISTS idx_entries_account_id;
+-- TODO: Drop performance indexes
+-- DROP INDEX IF EXISTS idx_accounts_status;
+-- DROP INDEX IF EXISTS idx_account_status_history_account_id;

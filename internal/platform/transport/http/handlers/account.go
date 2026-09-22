@@ -87,15 +87,15 @@ func (h *handler) GetAccountBalance(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetAccountStatement returns the statement of an account
-func (h *handler) GetAccountStatement(w http.ResponseWriter, r *http.Request) {
-	var req dto.GetAccountStatementDTO
+func (h *handler) GetAccountStatementSummary(w http.ResponseWriter, r *http.Request) {
+	var req dto.GetAccountStatementSummaryDTO
 
 	if err := httputil.DecodeAndValidate(r, &req, httputil.SourcePath); err != nil {
 		httputil.Error(w, err)
 		return
 	}
 
-	statement, err := h.accountService.GetAccountStatement(r.Context(), req.ID)
+	statement, err := h.accountService.GetAccountStatementSummary(r.Context(), req.ToDomainParams())
 	if err != nil {
 		httputil.Error(w, err)
 		return
@@ -104,15 +104,15 @@ func (h *handler) GetAccountStatement(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, statement)
 }
 
-func (h *handler) GetAccountEntries(w http.ResponseWriter, r *http.Request) {
-	var req dto.GetAccountEntriesDTO
+func (h *handler) GetAccountStatementEntries(w http.ResponseWriter, r *http.Request) {
+	var req dto.GetAccountStatementEntriesDTO
 
 	if err := httputil.DecodeAndValidate(r, &req, httputil.SourcePath); err != nil {
 		httputil.Error(w, err)
 		return
 	}
 
-	entries, err := h.accountService.GetAccountEntries(r.Context(), req.ID)
+	entries, err := h.accountService.GetAccountStatementEntries(r.Context(), req.ToDomainParams())
 	if err != nil {
 		httputil.Error(w, err)
 		return

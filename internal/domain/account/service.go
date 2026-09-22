@@ -12,8 +12,8 @@ type Service interface {
 	GetAccountDetails(ctx context.Context, id uuid.UUID) (*Account, error)
 	ListAccounts(ctx context.Context, params ListAccountsParams) ([]Account, error)
 	GetAccountBalance(ctx context.Context, id uuid.UUID) (int64, error)
-	GetAccountStatement(ctx context.Context, id uuid.UUID) ([]Statement, error)
-	GetAccountEntries(ctx context.Context, id uuid.UUID) ([]StatementEntry, error)
+	GetAccountStatementSummary(ctx context.Context, params GetStatementSummaryParams) (*StatementSummary, error)
+	GetAccountStatementEntries(ctx context.Context, params GetStatementEntriesParams) ([]StatementEntry, error)
 	ReconcileAccount(ctx context.Context, id uuid.UUID) (*ReconciliationResult, error)
 	CreateAccountSnapshot(ctx context.Context, params CreateAccountSnapshotParams) (*Account, error)
 }
@@ -46,11 +46,11 @@ func (s *accountService) GetAccountBalance(ctx context.Context, id uuid.UUID) (i
 	return 0, nil
 }
 
-func (s *accountService) GetAccountStatement(ctx context.Context, id uuid.UUID) ([]Statement, error) {
+func (s *accountService) GetAccountStatementSummary(ctx context.Context, params GetStatementSummaryParams) (*StatementSummary, error) {
 	return nil, nil
 }
 
-func (s *accountService) GetAccountEntries(ctx context.Context, id uuid.UUID) ([]StatementEntry, error) {
+func (s *accountService) GetAccountStatementEntries(ctx context.Context, params GetStatementEntriesParams) ([]StatementEntry, error) {
 	return nil, nil
 }
 

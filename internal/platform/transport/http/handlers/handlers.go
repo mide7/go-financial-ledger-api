@@ -14,8 +14,8 @@ type Handler interface {
 	GetAccountDetails(w http.ResponseWriter, r *http.Request)
 	ListAccounts(w http.ResponseWriter, r *http.Request)
 	GetAccountBalance(w http.ResponseWriter, r *http.Request)
-	GetAccountStatement(w http.ResponseWriter, r *http.Request)
-	GetAccountEntries(w http.ResponseWriter, r *http.Request)
+	GetAccountStatementSummary(w http.ResponseWriter, r *http.Request)
+	GetAccountStatementEntries(w http.ResponseWriter, r *http.Request)
 	ReconcileAccount(w http.ResponseWriter, r *http.Request)
 	CreateAccountSnapshot(w http.ResponseWriter, r *http.Request)
 

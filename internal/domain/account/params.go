@@ -33,3 +33,17 @@ type CreateAccountSnapshotParams struct {
 	TargetEntrySequence int64
 	Reason              string
 }
+
+type GetStatementSummaryParams struct {
+	AccountID uuid.UUID
+	StartDate time.Time
+	EndDate   time.Time
+}
+
+type GetStatementEntriesParams struct {
+	AccountID uuid.UUID
+	StartDate time.Time
+	EndDate   time.Time
+	Limit     int32
+	Cursor    uuid.NullUUID
+}

@@ -45,12 +45,36 @@ type GetAccountBalanceDTO struct {
 	ID uuid.UUID `form:"id" validate:"required,uuid"`
 }
 
-type GetAccountStatementDTO struct {
-	ID uuid.UUID `form:"id" validate:"required,uuid"`
+type GetAccountStatementSummaryDTO struct {
+	ID        uuid.UUID `form:"id" validate:"required,uuid"`
+	StartDate time.Time `form:"start_date" validate:"required"`
+	EndDate   time.Time `form:"end_date" validate:"required"`
 }
 
-type GetAccountEntriesDTO struct {
-	ID uuid.UUID `form:"id" validate:"required,uuid"`
+func (g GetAccountStatementSummaryDTO) ToDomainParams() account.GetStatementSummaryParams {
+	return account.GetStatementSummaryParams{
+		AccountID: g.ID,
+		StartDate: g.StartDate,
+		EndDate:   g.EndDate,
+	}
+}
+
+type GetAccountStatementEntriesDTO struct {
+	ID        uuid.UUID     `form:"id" validate:"required,uuid"`
+	StartDate time.Time     `form:"start_date" validate:"required"`
+	EndDate   time.Time     `form:"end_date" validate:"required"`
+	Limit     int32         `form:"limit" validate:"omitempty,gte=1,lte=100"`
+	Cursor    uuid.NullUUID `form:"cursor" validate:"omitempty,uuid"`
+}
+
+func (g GetAccountStatementEntriesDTO) ToDomainParams() account.GetStatementEntriesParams {
+	return account.GetStatementEntriesParams{
+		AccountID: g.ID,
+		StartDate: g.StartDate,
+		EndDate:   g.EndDate,
+		Limit:     g.Limit,
+		Cursor:    g.Cursor,
+	}
 }
 
 type ReconcileAccountDTO struct {

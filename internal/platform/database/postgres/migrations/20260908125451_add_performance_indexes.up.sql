@@ -13,3 +13,6 @@ CREATE INDEX IF NOT EXISTS idx_idempotency_expires_at ON idempotency_records(exp
 CREATE INDEX IF NOT EXISTS idx_idempotency_active ON idempotency_records(expires_at)
 WHERE status = 'IN_PROGRESS';
 CREATE INDEX IF NOT EXISTS idx_balance_snapshots_account_seq_desc ON balance_snapshots(account_id, last_entry_sequence DESC);
+-- TODO: Add performance indexes
+-- CREATE INDEX IF NOT EXISTS idx_accounts_status ON accounts(status) WHERE status != 'ACTIVE';
+-- CREATE INDEX IF NOT EXISTS idx_account_status_history_account_id ON account_status_history(account_id, created_at DESC);

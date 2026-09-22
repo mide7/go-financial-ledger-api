@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     owner_id VARCHAR(64) NOT NULL,
     type VARCHAR(64) NOT NULL,
     currency VARCHAR(3) NOT NULL DEFAULT 'NGN' REFERENCES currencies(code) ON DELETE RESTRICT,
+    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_account_type CHECK (
@@ -23,6 +24,20 @@ CREATE TABLE IF NOT EXISTS accounts (
             'PLATFORM_ESCROW_LIABILITY',
             'PLATFORM_FEE_REVENUE',
             'MERCHANT_PAYABLE'
+        )
+    ),
+    CONSTRAINT chk_account_status CHECK (
+        status IN (
+            -- Can receive funds and transfer out
+            'ACTIVE',
+            -- Cannot receive funds or transfer out
+            'FULLY_FROZEN',
+            -- Can receive funds, cannot transfer out
+            'DEBIT_RESTRICTED',
+            -- Can transfer out, cannot receive funds
+            'CREDIT_RESTRICTED',
+            -- Can neither receive nor transfer out, permanently closed
+            'CLOSED'
         )
     ),
     CONSTRAINT uq_owner_type_currency UNIQUE (owner_id, type, currency)

@@ -6,14 +6,26 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 type Querier interface {
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
+	CreateBalanceSnapshot(ctx context.Context, accountID uuid.UUID) (BalanceSnapshot, error)
 	CreateEntries(ctx context.Context, arg []CreateEntriesParams) (int64, error)
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
-	GetAccountBalance(ctx context.Context) (int32, error)
+	GetAccount(ctx context.Context, id uuid.UUID) (Account, error)
+	GetAccountBalance(ctx context.Context, accountID uuid.UUID) (GetAccountBalanceRow, error)
+	GetAccountStatementSummary(ctx context.Context, arg GetAccountStatementSummaryParams) (GetAccountStatementSummaryRow, error)
+	GetLatestBalanceSnapshot(ctx context.Context, accountID uuid.UUID) (BalanceSnapshot, error)
+	InsertDiscrepancyRecord(ctx context.Context, arg InsertDiscrepancyRecordParams) (DiscrepancyRecord, error)
+	ListAccounts(ctx context.Context, arg ListAccountsParams) ([]Account, error)
 	ListActiveCurrencies(ctx context.Context) ([]ListActiveCurrenciesRow, error)
+	ListUnresolvedDiscrepancies(ctx context.Context) ([]DiscrepancyRecord, error)
+	// TODO: GetAccountStatementEntries
+	ReconcileAccount(ctx context.Context, accountID uuid.UUID) (ReconcileAccountRow, error)
+	ResolveDiscrepancy(ctx context.Context, arg ResolveDiscrepancyParams) error
 	SeedCurrency(ctx context.Context, arg SeedCurrencyParams) error
 	SeedSystemAccount(ctx context.Context, arg SeedSystemAccountParams) error
 }

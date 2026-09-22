@@ -9,6 +9,7 @@ type Code string
 const (
 	NGN Code = "NGN"
 	USD Code = "USD"
+	EUR Code = "EUR"
 )
 
 func (c Code) String() string {

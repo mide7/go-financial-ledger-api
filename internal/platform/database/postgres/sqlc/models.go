@@ -60,8 +60,20 @@ type Account struct {
 	OwnerID   string    `json:"owner_id"`
 	Type      string    `json:"type"`
 	Currency  string    `json:"currency"`
+	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type AccountStatusHistory struct {
+	ID             uuid.UUID `json:"id"`
+	AccountID      uuid.UUID `json:"account_id"`
+	PreviousStatus string    `json:"previous_status"`
+	NewStatus      string    `json:"new_status"`
+	Reason         string    `json:"reason"`
+	ActorType      string    `json:"actor_type"`
+	ActorID        string    `json:"actor_id"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type BalanceSnapshot struct {
@@ -78,6 +90,20 @@ type Currency struct {
 	Exponent  int16     `json:"exponent"`
 	IsActive  bool      `json:"is_active"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type DiscrepancyRecord struct {
+	ID                   uuid.UUID          `json:"id"`
+	AccountID            uuid.UUID          `json:"account_id"`
+	RawLedgerSum         int64              `json:"raw_ledger_sum"`
+	SnapshotBalance      int64              `json:"snapshot_balance"`
+	CalculatedTotal      int64              `json:"calculated_total"`
+	DiscrepancyAmount    int64              `json:"discrepancy_amount"`
+	LastSnapshotSequence int64              `json:"last_snapshot_sequence"`
+	CurrentMaxSequence   int64              `json:"current_max_sequence"`
+	DetectedAt           time.Time          `json:"detected_at"`
+	ResolvedAt           pgtype.Timestamptz `json:"resolved_at"`
+	ResolutionNotes      pgtype.Text        `json:"resolution_notes"`
 }
 
 type Entry struct {

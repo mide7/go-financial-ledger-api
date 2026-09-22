@@ -7,12 +7,16 @@ package sqlc
 
 import (
 	"context"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (owner_id, type, currency)
 VALUES ($1, $2, $3)
-RETURNING id, owner_id, type, currency, created_at, updated_at
+RETURNING id, owner_id, type, currency, status, created_at, updated_at
 `
 
 type CreateAccountParams struct {
@@ -29,6 +33,29 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.OwnerID,
 		&i.Type,
 		&i.Currency,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAccount = `-- name: GetAccount :one
+SELECT id, owner_id, type, currency, status, created_at, updated_at
+FROM accounts
+WHERE id = $1
+LIMIT 1
+`
+
+func (q *Queries) GetAccount(ctx context.Context, id uuid.UUID) (Account, error) {
+	row := q.db.QueryRow(ctx, getAccount, id)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.Type,
+		&i.Currency,
+		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -36,41 +63,375 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 }
 
 const getAccountBalance = `-- name: GetAccountBalance :one
-WITH latest_snapshot AS (
+WITH account_info AS (
+    SELECT a.id AS account_id,
+        a.currency,
+        c.exponent
+    FROM accounts a
+        JOIN currencies c ON a.currency = c.code
+    WHERE a.id = $1
+),
+latest_snapshot AS (
     SELECT balance,
         last_entry_sequence
     FROM balance_snapshots
-    WHERE account_id = '123e4567-e89b-12d3-a456-426614174000'
+    WHERE account_id = $1
     ORDER BY last_entry_sequence DESC
     LIMIT 1
+), baseline AS (
+    SELECT balance,
+        last_entry_sequence
+    FROM latest_snapshot
+    UNION ALL
+    -- Fallback zero-state if no snapshot exists yet for a new account
+    SELECT 0 AS balance,
+        0 AS last_entry_sequence
+    LIMIT 1
+), raw_balance AS (
+    SELECT (
+            COALESCE(b.balance, 0) + COALESCE(
+                SUM(
+                    CASE
+                        WHEN e.type = 'CREDIT' THEN e.amount
+                        WHEN e.type = 'DEBIT' THEN - e.amount
+                        ELSE 0
+                    END
+                ),
+                0
+            )
+        )::BIGINT AS minor_units
+    FROM baseline b
+        LEFT JOIN entries e ON e.account_id = $1
+        AND e.entry_sequence > b.last_entry_sequence
+    GROUP BY b.balance
 )
-SELECT COALESCE(s.balance, 0) + COALESCE(
-        SUM(
-            CASE
-                WHEN e.type = 'CREDIT' THEN e.amount
-                WHEN e.type = 'DEBIT' THEN - e.amount
-                ELSE 0
-            END
-        ),
-        0
-    ) AS current_balance
-FROM (
-        SELECT balance,
-            last_entry_sequence
-        FROM latest_snapshot
-        UNION ALL
-        -- Fallback zero-state if no snapshot exists yet for a new account
-        SELECT 0 AS balance,
-            0 AS last_entry_sequence
-        LIMIT 1
-    ) s
-    LEFT JOIN entries e ON e.account_id = '123e4567-e89b-12d3-a456-426614174000'
-    AND e.entry_sequence > s.last_entry_sequence
+SELECT ai.currency,
+    ai.exponent,
+    rb.minor_units AS balance_minor,
+    (rb.minor_units::NUMERIC / POWER(10, ai.exponent))::NUMERIC AS balance_major
+FROM account_info ai
+    CROSS JOIN raw_balance rb
 `
 
-func (q *Queries) GetAccountBalance(ctx context.Context) (int32, error) {
-	row := q.db.QueryRow(ctx, getAccountBalance)
-	var current_balance int32
-	err := row.Scan(&current_balance)
-	return current_balance, err
+type GetAccountBalanceRow struct {
+	Currency     string         `json:"currency"`
+	Exponent     int16          `json:"exponent"`
+	BalanceMinor int64          `json:"balance_minor"`
+	BalanceMajor pgtype.Numeric `json:"balance_major"`
+}
+
+func (q *Queries) GetAccountBalance(ctx context.Context, accountID uuid.UUID) (GetAccountBalanceRow, error) {
+	row := q.db.QueryRow(ctx, getAccountBalance, accountID)
+	var i GetAccountBalanceRow
+	err := row.Scan(
+		&i.Currency,
+		&i.Exponent,
+		&i.BalanceMinor,
+		&i.BalanceMajor,
+	)
+	return i, err
+}
+
+const getAccountStatementSummary = `-- name: GetAccountStatementSummary :one
+WITH account_info AS (
+    SELECT a.id AS account_id,
+        a.currency,
+        c.exponent
+    FROM accounts a
+        JOIN currencies c ON a.currency = c.code
+    WHERE a.id = $1
+),
+prior_activity AS (
+    SELECT COALESCE(
+            SUM(
+                CASE
+                    WHEN type = 'DEBIT' THEN amount
+                    ELSE - amount
+                END
+            ),
+            0
+        )::BIGINT AS balance
+    FROM entries
+    WHERE account_id = $1
+        AND (
+            $2::timestamptz IS NOT NULL
+            AND created_at < $2
+        )
+),
+period_activity AS (
+    SELECT COALESCE(
+            SUM(
+                CASE
+                    WHEN type = 'DEBIT' THEN amount
+                    ELSE 0
+                END
+            ),
+            0
+        )::BIGINT AS total_debits,
+        COALESCE(
+            SUM(
+                CASE
+                    WHEN type = 'CREDIT' THEN amount
+                    ELSE 0
+                END
+            ),
+            0
+        )::BIGINT AS total_credits
+    FROM entries
+    WHERE account_id = $1
+        AND (
+            $2::timestamptz IS NULL
+            OR created_at >= $2
+        )
+        AND (
+            $3::timestamptz IS NULL
+            OR created_at <= $3
+        )
+)
+SELECT ai.account_id,
+    ai.currency,
+    ai.exponent,
+    p.balance AS opening_balance,
+    pa.total_debits,
+    pa.total_credits,
+    (p.balance + pa.total_debits - pa.total_credits)::BIGINT AS closing_balance
+FROM account_info ai
+    CROSS JOIN prior_activity p
+    CROSS JOIN period_activity pa
+`
+
+type GetAccountStatementSummaryParams struct {
+	AccountID uuid.UUID          `json:"account_id"`
+	StartDate pgtype.Timestamptz `json:"start_date"`
+	EndDate   pgtype.Timestamptz `json:"end_date"`
+}
+
+type GetAccountStatementSummaryRow struct {
+	AccountID      uuid.UUID `json:"account_id"`
+	Currency       string    `json:"currency"`
+	Exponent       int16     `json:"exponent"`
+	OpeningBalance int64     `json:"opening_balance"`
+	TotalDebits    int64     `json:"total_debits"`
+	TotalCredits   int64     `json:"total_credits"`
+	ClosingBalance int64     `json:"closing_balance"`
+}
+
+func (q *Queries) GetAccountStatementSummary(ctx context.Context, arg GetAccountStatementSummaryParams) (GetAccountStatementSummaryRow, error) {
+	row := q.db.QueryRow(ctx, getAccountStatementSummary, arg.AccountID, arg.StartDate, arg.EndDate)
+	var i GetAccountStatementSummaryRow
+	err := row.Scan(
+		&i.AccountID,
+		&i.Currency,
+		&i.Exponent,
+		&i.OpeningBalance,
+		&i.TotalDebits,
+		&i.TotalCredits,
+		&i.ClosingBalance,
+	)
+	return i, err
+}
+
+const listAccounts = `-- name: ListAccounts :many
+SELECT id, owner_id, type, currency, status, created_at, updated_at
+FROM accounts
+WHERE (
+        $1::text IS NULL
+        OR owner_id = $1
+    )
+    AND (
+        $2::text IS NULL
+        OR type = $2
+    )
+    AND (
+        $3::text IS NULL
+        OR currency = $3
+    )
+ORDER BY -- Sort by created_at
+    CASE
+        WHEN $4::text = 'created_at'
+        AND LOWER($5::text) = 'asc' THEN created_at
+    END ASC,
+    CASE
+        WHEN $4::text = 'created_at'
+        AND LOWER($5::text) = 'desc' THEN created_at
+    END DESC,
+    -- Sort by type
+    CASE
+        WHEN $4::text = 'type'
+        AND LOWER($5::text) = 'asc' THEN type
+    END ASC,
+    CASE
+        WHEN $4::text = 'type'
+        AND LOWER($5::text) = 'desc' THEN type
+    END DESC,
+    -- Sort by currency
+    CASE
+        WHEN $4::text = 'currency'
+        AND LOWER($5::text) = 'asc' THEN currency
+    END ASC,
+    CASE
+        WHEN $4::text = 'currency'
+        AND LOWER($5::text) = 'desc' THEN currency
+    END DESC,
+    -- Default fallback if sort_by is empty or invalid
+    CASE
+        WHEN $4::text IS NULL
+        OR $4::text = '' THEN created_at
+    END DESC
+LIMIT $7::int OFFSET $6::int
+`
+
+type ListAccountsParams struct {
+	OwnerID   pgtype.Text `json:"owner_id"`
+	Type      pgtype.Text `json:"type"`
+	Currency  pgtype.Text `json:"currency"`
+	SortBy    pgtype.Text `json:"sort_by"`
+	SortOrder pgtype.Text `json:"sort_order"`
+	Offset    int32       `json:"offset"`
+	Limit     int32       `json:"limit"`
+}
+
+func (q *Queries) ListAccounts(ctx context.Context, arg ListAccountsParams) ([]Account, error) {
+	rows, err := q.db.Query(ctx, listAccounts,
+		arg.OwnerID,
+		arg.Type,
+		arg.Currency,
+		arg.SortBy,
+		arg.SortOrder,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Account{}
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerID,
+			&i.Type,
+			&i.Currency,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reconcileAccount = `-- name: ReconcileAccount :one
+WITH account_currency AS (
+    SELECT a.id AS account_id,
+        a.currency,
+        c.exponent
+    FROM accounts a
+        JOIN currencies c ON c.code = a.currency
+    WHERE a.id = $1
+),
+latest_snapshot AS (
+    SELECT bs.balance,
+        bs.last_entry_sequence
+    FROM balance_snapshots bs
+    WHERE bs.account_id = $1
+    ORDER BY bs.last_entry_sequence DESC
+    LIMIT 1
+), raw_ledger AS (
+    SELECT COALESCE(
+            SUM(
+                CASE
+                    WHEN e.type = 'DEBIT' THEN e.amount
+                    ELSE - e.amount
+                END
+            ),
+            0
+        )::bigint AS raw_sum,
+        COALESCE(MAX(e.entry_sequence), 0)::bigint AS max_sequence
+    FROM entries e
+    WHERE e.account_id = $1
+),
+delta AS (
+    SELECT COALESCE(
+            SUM(
+                CASE
+                    WHEN e.type = 'DEBIT' THEN e.amount
+                    ELSE - e.amount
+                END
+            ),
+            0
+        )::bigint AS delta_sum
+    FROM entries e
+    WHERE e.account_id = $1
+        AND e.entry_sequence > COALESCE(
+            (
+                SELECT last_entry_sequence
+                FROM latest_snapshot
+            ),
+            0
+        )
+)
+SELECT ac.account_id,
+    CASE
+        WHEN rl.raw_sum = COALESCE(ls.balance, 0) + d.delta_sum THEN 'RECONCILED'
+        ELSE 'DISCREPANCY_DETECTED'
+    END AS status,
+    ac.currency,
+    ac.exponent,
+    rl.raw_sum AS raw_ledger_sum,
+    COALESCE(ls.balance, 0)::bigint AS snapshot_balance,
+    d.delta_sum AS delta_since_snapshot,
+    (COALESCE(ls.balance, 0) + d.delta_sum)::bigint AS calculated_total,
+    (
+        rl.raw_sum - (COALESCE(ls.balance, 0) + d.delta_sum)
+    )::bigint AS discrepancy_amount,
+    COALESCE(ls.last_entry_sequence, 0)::bigint AS last_snapshot_sequence,
+    rl.max_sequence AS current_max_sequence,
+    NOW()::timestamptz AS reconciled_at
+FROM account_currency ac
+    CROSS JOIN raw_ledger rl
+    CROSS JOIN delta d
+    LEFT JOIN latest_snapshot ls ON true
+`
+
+type ReconcileAccountRow struct {
+	AccountID            uuid.UUID `json:"account_id"`
+	Status               string    `json:"status"`
+	Currency             string    `json:"currency"`
+	Exponent             int16     `json:"exponent"`
+	RawLedgerSum         int64     `json:"raw_ledger_sum"`
+	SnapshotBalance      int64     `json:"snapshot_balance"`
+	DeltaSinceSnapshot   int64     `json:"delta_since_snapshot"`
+	CalculatedTotal      int64     `json:"calculated_total"`
+	DiscrepancyAmount    int64     `json:"discrepancy_amount"`
+	LastSnapshotSequence int64     `json:"last_snapshot_sequence"`
+	CurrentMaxSequence   int64     `json:"current_max_sequence"`
+	ReconciledAt         time.Time `json:"reconciled_at"`
+}
+
+// TODO: GetAccountStatementEntries
+func (q *Queries) ReconcileAccount(ctx context.Context, accountID uuid.UUID) (ReconcileAccountRow, error) {
+	row := q.db.QueryRow(ctx, reconcileAccount, accountID)
+	var i ReconcileAccountRow
+	err := row.Scan(
+		&i.AccountID,
+		&i.Status,
+		&i.Currency,
+		&i.Exponent,
+		&i.RawLedgerSum,
+		&i.SnapshotBalance,
+		&i.DeltaSinceSnapshot,
+		&i.CalculatedTotal,
+		&i.DiscrepancyAmount,
+		&i.LastSnapshotSequence,
+		&i.CurrentMaxSequence,
+		&i.ReconciledAt,
+	)
+	return i, err
 }

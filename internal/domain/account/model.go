@@ -45,7 +45,7 @@ type GetAccountBalanceResult struct {
 type StatementSummary struct {
 	AccountID      uuid.UUID     `json:"account_id"`
 	Currency       currency.Code `json:"currency"`
-	Exponent       int32         `json:"exponent"`
+	Exponent       int16         `json:"exponent"`
 	StartDate      time.Time     `json:"start_date"`
 	EndDate        time.Time     `json:"end_date"`
 	OpeningBalance int64         `json:"opening_balance"`
@@ -55,14 +55,16 @@ type StatementSummary struct {
 }
 
 type StatementEntry struct {
-	ID             string    `json:"id"`
-	TransactionID  uuid.UUID `json:"transaction_id"`
-	Type           string    `json:"type"`   // "DEBIT" or "CREDIT"
-	Amount         int64     `json:"amount"` // Minor units
-	RunningBalance int64     `json:"running_balance"`
-	Description    string    `json:"description"`
-	EntrySequence  int64     `json:"entry_sequence"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID             string        `json:"id"`
+	TransactionID  uuid.UUID     `json:"transaction_id"`
+	Type           string        `json:"type"`   // "DEBIT" or "CREDIT"
+	Amount         int64         `json:"amount"` // Minor units
+	RunningBalance int64         `json:"running_balance"`
+	Currency       currency.Code `json:"currency"`
+	Exponent       int16         `json:"exponent"`
+	Description    string        `json:"description"`
+	EntrySequence  int64         `json:"entry_sequence"`
+	CreatedAt      time.Time     `json:"created_at"`
 }
 
 // ReconciliationResult detail audit output.
@@ -70,7 +72,7 @@ type ReconciliationResult struct {
 	AccountID            uuid.UUID     `json:"account_id"`
 	Status               string        `json:"status"` // "RECONCILED" or "DISCREPANCY_DETECTED"
 	Currency             currency.Code `json:"currency"`
-	Exponent             int32         `json:"exponent"`
+	Exponent             int16         `json:"exponent"`
 	RawLedgerSum         int64         `json:"raw_ledger_sum"`
 	SnapshotBalance      int64         `json:"snapshot_balance"`
 	DeltaSinceSnapshot   int64         `json:"delta_since_snapshot"`

@@ -22,6 +22,19 @@ func mapToAccountDomain(a *sqlc.Account) *account.Account {
 	}
 }
 
+func mapToAccountDomainList(as []sqlc.Account) []account.Account {
+	if len(as) == 0 {
+		return nil
+	}
+
+	accounts := make([]account.Account, len(as))
+	for i, a := range as {
+		accounts[i] = *mapToAccountDomain(&a)
+	}
+
+	return accounts
+}
+
 func mapToTransactionDomain(t *sqlc.Transaction) *transaction.Transaction {
 	if t == nil {
 		return nil

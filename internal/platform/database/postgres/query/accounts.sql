@@ -2,10 +2,21 @@
 INSERT INTO accounts (owner_id, type, currency)
 VALUES ($1, $2, $3)
 RETURNING *;
--- name: GetAccount :one
+-- name: GetAccountByID :one
 SELECT *
 FROM accounts
 WHERE id = $1
+LIMIT 1;
+-- name: GetAccountsByOwnerID :many
+SELECT *
+FROM accounts
+WHERE owner_id = sqlc.arg('owner_id');
+-- name: GetAccountByOwnerTypeCurrency :one
+SELECT *
+FROM accounts
+WHERE owner_id = sqlc.arg('owner_id')
+    AND type = sqlc.arg('type')
+    AND currency = sqlc.arg('currency')
 LIMIT 1;
 -- name: ListAccounts :many
 SELECT *
@@ -52,8 +63,11 @@ ORDER BY -- Sort by created_at
     -- Default fallback if sort_by is empty or invalid
     CASE
         WHEN sqlc.narg(sort_by)::text IS NULL
-        OR sqlc.narg(sort_by)::text = '' THEN created_at
-    END DESC
+        OR sqlc.narg(sort_by)::text = ''
+        OR sqlc.narg(sort_by)::text NOT IN ('created_at', 'type', 'currency') THEN created_at
+    END DESC,
+    -- Tiebreaker
+    id DESC
 LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
 -- name: GetAccountBalance :one
 WITH account_info AS (
@@ -226,7 +240,60 @@ FROM account_history
 WHERE entry_created_at >= sqlc.arg('start_date')
 ORDER BY entry_sequence DESC
 LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
--- TODO: GetAccountStatementEntries
+-- name: GetAccountStatementEntries :many
+WITH cursor_seq AS (
+    SELECT entry_sequence
+    FROM entries
+    WHERE id = sqlc.narg('cursor_id')::uuid
+),
+running AS (
+    SELECT e.id,
+        e.transaction_id,
+        e.type,
+        e.amount,
+        e.entry_sequence,
+        e.created_at,
+        t.description,
+        t.currency,
+        c.exponent,
+        SUM(
+            CASE
+                WHEN e.type = at.normal_balance THEN e.amount
+                ELSE - e.amount
+            END
+        ) OVER (
+            PARTITION BY e.account_id
+            ORDER BY e.entry_sequence ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS running_balance
+    FROM entries e
+        JOIN transactions t ON t.id = e.transaction_id
+        JOIN currencies c ON c.code = t.currency
+        JOIN accounts a ON a.id = e.account_id
+        JOIN account_types at ON at.type = a.type
+    WHERE e.account_id = sqlc.arg('account_id')::uuid
+)
+SELECT id,
+    transaction_id,
+    type,
+    amount,
+    running_balance,
+    currency,
+    exponent,
+    description,
+    entry_sequence,
+    created_at
+FROM running
+WHERE created_at >= sqlc.arg('start_date')::timestamptz
+    AND created_at < sqlc.arg('end_date')::timestamptz
+    AND (
+        sqlc.narg('cursor_id')::uuid IS NULL
+        OR entry_sequence < (
+            SELECT entry_sequence
+            FROM cursor_seq
+        )
+    )
+ORDER BY entry_sequence DESC
+LIMIT sqlc.arg('limit_count')::int;
 -- name: ReconcileAccount :one
 WITH account_currency AS (
     SELECT a.id AS account_id,

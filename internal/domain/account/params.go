@@ -12,15 +12,20 @@ type CreateAccountParams struct {
 	Currency string
 }
 
-type GetAccountDetailsParams struct {
-	ID string
+type GetAccountByOwnerTypeCurrencyParams struct {
+	OwnerID  string
+	Type     string
+	Currency string
 }
 
 type ListAccountsParams struct {
 	Page     int
 	Limit    int
+	SortBy   string
+	OrderBy  string
 	Currency string
 	Type     string
+	OwnerID  string
 }
 
 type ReconcileAccountParams struct {

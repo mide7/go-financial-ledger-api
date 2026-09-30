@@ -9,23 +9,30 @@ CREATE TABLE IF NOT EXISTS currencies (
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
--- 2. Accounts Table
+-- 2. Account Types Table
+CREATE TABLE account_types (
+    type VARCHAR(64) PRIMARY KEY,
+    nature VARCHAR(16) NOT NULL CHECK (
+        nature IN (
+            'ASSET',
+            'LIABILITY',
+            'REVENUE',
+            'EXPENSE',
+            'EQUITY'
+        )
+    ),
+    normal_balance entry_type NOT NULL,
+    description TEXT NOT NULL DEFAULT ''
+);
+-- 3. Accounts Table
 CREATE TABLE IF NOT EXISTS accounts (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     owner_id VARCHAR(64) NOT NULL,
-    type VARCHAR(64) NOT NULL,
+    type VARCHAR(64) NOT NULL REFERENCES account_types(type) ON DELETE RESTRICT,
     currency VARCHAR(3) NOT NULL DEFAULT 'NGN' REFERENCES currencies(code) ON DELETE RESTRICT,
     status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT chk_account_type CHECK (
-        type IN (
-            'USER_WALLET',
-            'PLATFORM_ESCROW_LIABILITY',
-            'PLATFORM_FEE_REVENUE',
-            'MERCHANT_PAYABLE'
-        )
-    ),
     CONSTRAINT chk_account_status CHECK (
         status IN (
             -- Can receive funds and transfer out
@@ -42,7 +49,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     ),
     CONSTRAINT uq_owner_type_currency UNIQUE (owner_id, type, currency)
 );
--- 3. Transactions Table 
+-- 4. Transactions Table 
 CREATE TABLE IF NOT EXISTS transactions (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     reference VARCHAR(128) UNIQUE NOT NULL,
@@ -55,7 +62,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     transaction_date TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
--- 4. Ledger Entries Table
+-- 5. Ledger Entries Table
 CREATE TABLE IF NOT EXISTS entries (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE RESTRICT,

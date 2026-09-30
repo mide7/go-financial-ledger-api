@@ -76,6 +76,13 @@ type AccountStatusHistory struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+type AccountType struct {
+	Type          string    `json:"type"`
+	Nature        string    `json:"nature"`
+	NormalBalance EntryType `json:"normal_balance"`
+	Description   string    `json:"description"`
+}
+
 type BalanceSnapshot struct {
 	ID                uuid.UUID `json:"id"`
 	AccountID         uuid.UUID `json:"account_id"`

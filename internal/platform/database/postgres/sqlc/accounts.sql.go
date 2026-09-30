@@ -40,28 +40,6 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 	return i, err
 }
 
-const getAccount = `-- name: GetAccount :one
-SELECT id, owner_id, type, currency, status, created_at, updated_at
-FROM accounts
-WHERE id = $1
-LIMIT 1
-`
-
-func (q *Queries) GetAccount(ctx context.Context, id uuid.UUID) (Account, error) {
-	row := q.db.QueryRow(ctx, getAccount, id)
-	var i Account
-	err := row.Scan(
-		&i.ID,
-		&i.OwnerID,
-		&i.Type,
-		&i.Currency,
-		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const getAccountBalance = `-- name: GetAccountBalance :one
 WITH account_info AS (
     SELECT a.id AS account_id,
@@ -130,6 +108,172 @@ func (q *Queries) GetAccountBalance(ctx context.Context, accountID uuid.UUID) (G
 		&i.BalanceMajor,
 	)
 	return i, err
+}
+
+const getAccountByID = `-- name: GetAccountByID :one
+SELECT id, owner_id, type, currency, status, created_at, updated_at
+FROM accounts
+WHERE id = $1
+LIMIT 1
+`
+
+func (q *Queries) GetAccountByID(ctx context.Context, id uuid.UUID) (Account, error) {
+	row := q.db.QueryRow(ctx, getAccountByID, id)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.Type,
+		&i.Currency,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAccountByOwnerTypeCurrency = `-- name: GetAccountByOwnerTypeCurrency :one
+SELECT id, owner_id, type, currency, status, created_at, updated_at
+FROM accounts
+WHERE owner_id = $1
+    AND type = $2
+    AND currency = $3
+LIMIT 1
+`
+
+type GetAccountByOwnerTypeCurrencyParams struct {
+	OwnerID  string `json:"owner_id"`
+	Type     string `json:"type"`
+	Currency string `json:"currency"`
+}
+
+func (q *Queries) GetAccountByOwnerTypeCurrency(ctx context.Context, arg GetAccountByOwnerTypeCurrencyParams) (Account, error) {
+	row := q.db.QueryRow(ctx, getAccountByOwnerTypeCurrency, arg.OwnerID, arg.Type, arg.Currency)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.Type,
+		&i.Currency,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAccountStatementEntries = `-- name: GetAccountStatementEntries :many
+WITH cursor_seq AS (
+    SELECT entry_sequence
+    FROM entries
+    WHERE id = $3::uuid
+),
+running AS (
+    SELECT e.id,
+        e.transaction_id,
+        e.type,
+        e.amount,
+        e.entry_sequence,
+        e.created_at,
+        t.description,
+        t.currency,
+        c.exponent,
+        SUM(
+            CASE
+                WHEN e.type = at.normal_balance THEN e.amount
+                ELSE - e.amount
+            END
+        ) OVER (
+            PARTITION BY e.account_id
+            ORDER BY e.entry_sequence ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS running_balance
+    FROM entries e
+        JOIN transactions t ON t.id = e.transaction_id
+        JOIN currencies c ON c.code = t.currency
+        JOIN accounts a ON a.id = e.account_id
+        JOIN account_types at ON at.type = a.type
+    WHERE e.account_id = $5::uuid
+)
+SELECT id,
+    transaction_id,
+    type,
+    amount,
+    running_balance,
+    currency,
+    exponent,
+    description,
+    entry_sequence,
+    created_at
+FROM running
+WHERE created_at >= $1::timestamptz
+    AND created_at < $2::timestamptz
+    AND (
+        $3::uuid IS NULL
+        OR entry_sequence < (
+            SELECT entry_sequence
+            FROM cursor_seq
+        )
+    )
+ORDER BY entry_sequence DESC
+LIMIT $4::int
+`
+
+type GetAccountStatementEntriesParams struct {
+	StartDate  time.Time     `json:"start_date"`
+	EndDate    time.Time     `json:"end_date"`
+	CursorID   uuid.NullUUID `json:"cursor_id"`
+	LimitCount int32         `json:"limit_count"`
+	AccountID  uuid.UUID     `json:"account_id"`
+}
+
+type GetAccountStatementEntriesRow struct {
+	ID             uuid.UUID `json:"id"`
+	TransactionID  uuid.UUID `json:"transaction_id"`
+	Type           EntryType `json:"type"`
+	Amount         int64     `json:"amount"`
+	RunningBalance int64     `json:"running_balance"`
+	Currency       string    `json:"currency"`
+	Exponent       int16     `json:"exponent"`
+	Description    string    `json:"description"`
+	EntrySequence  int64     `json:"entry_sequence"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+func (q *Queries) GetAccountStatementEntries(ctx context.Context, arg GetAccountStatementEntriesParams) ([]GetAccountStatementEntriesRow, error) {
+	rows, err := q.db.Query(ctx, getAccountStatementEntries,
+		arg.StartDate,
+		arg.EndDate,
+		arg.CursorID,
+		arg.LimitCount,
+		arg.AccountID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetAccountStatementEntriesRow{}
+	for rows.Next() {
+		var i GetAccountStatementEntriesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TransactionID,
+			&i.Type,
+			&i.Amount,
+			&i.RunningBalance,
+			&i.Currency,
+			&i.Exponent,
+			&i.Description,
+			&i.EntrySequence,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getAccountStatementSummary = `-- name: GetAccountStatementSummary :one
@@ -231,6 +375,40 @@ func (q *Queries) GetAccountStatementSummary(ctx context.Context, arg GetAccount
 	return i, err
 }
 
+const getAccountsByOwnerID = `-- name: GetAccountsByOwnerID :many
+SELECT id, owner_id, type, currency, status, created_at, updated_at
+FROM accounts
+WHERE owner_id = $1
+`
+
+func (q *Queries) GetAccountsByOwnerID(ctx context.Context, ownerID string) ([]Account, error) {
+	rows, err := q.db.Query(ctx, getAccountsByOwnerID, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Account{}
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerID,
+			&i.Type,
+			&i.Currency,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAccounts = `-- name: ListAccounts :many
 SELECT id, owner_id, type, currency, status, created_at, updated_at
 FROM accounts
@@ -276,8 +454,11 @@ ORDER BY -- Sort by created_at
     -- Default fallback if sort_by is empty or invalid
     CASE
         WHEN $4::text IS NULL
-        OR $4::text = '' THEN created_at
-    END DESC
+        OR $4::text = ''
+        OR $4::text NOT IN ('created_at', 'type', 'currency') THEN created_at
+    END DESC,
+    -- Tiebreaker
+    id DESC
 LIMIT $7::int OFFSET $6::int
 `
 
@@ -415,7 +596,6 @@ type ReconcileAccountRow struct {
 	ReconciledAt         time.Time `json:"reconciled_at"`
 }
 
-// TODO: GetAccountStatementEntries
 func (q *Queries) ReconcileAccount(ctx context.Context, accountID uuid.UUID) (ReconcileAccountRow, error) {
 	row := q.db.QueryRow(ctx, reconcileAccount, accountID)
 	var i ReconcileAccountRow

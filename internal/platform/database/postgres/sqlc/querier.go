@@ -15,17 +15,20 @@ type Querier interface {
 	CreateBalanceSnapshot(ctx context.Context, accountID uuid.UUID) (BalanceSnapshot, error)
 	CreateEntries(ctx context.Context, arg []CreateEntriesParams) (int64, error)
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
-	GetAccount(ctx context.Context, id uuid.UUID) (Account, error)
 	GetAccountBalance(ctx context.Context, accountID uuid.UUID) (GetAccountBalanceRow, error)
+	GetAccountByID(ctx context.Context, id uuid.UUID) (Account, error)
+	GetAccountByOwnerTypeCurrency(ctx context.Context, arg GetAccountByOwnerTypeCurrencyParams) (Account, error)
+	GetAccountStatementEntries(ctx context.Context, arg GetAccountStatementEntriesParams) ([]GetAccountStatementEntriesRow, error)
 	GetAccountStatementSummary(ctx context.Context, arg GetAccountStatementSummaryParams) (GetAccountStatementSummaryRow, error)
+	GetAccountsByOwnerID(ctx context.Context, ownerID string) ([]Account, error)
 	GetLatestBalanceSnapshot(ctx context.Context, accountID uuid.UUID) (BalanceSnapshot, error)
 	InsertDiscrepancyRecord(ctx context.Context, arg InsertDiscrepancyRecordParams) (DiscrepancyRecord, error)
 	ListAccounts(ctx context.Context, arg ListAccountsParams) ([]Account, error)
 	ListActiveCurrencies(ctx context.Context) ([]ListActiveCurrenciesRow, error)
 	ListUnresolvedDiscrepancies(ctx context.Context) ([]DiscrepancyRecord, error)
-	// TODO: GetAccountStatementEntries
 	ReconcileAccount(ctx context.Context, accountID uuid.UUID) (ReconcileAccountRow, error)
 	ResolveDiscrepancy(ctx context.Context, arg ResolveDiscrepancyParams) error
+	SeedAccountType(ctx context.Context, arg SeedAccountTypeParams) error
 	SeedCurrency(ctx context.Context, arg SeedCurrencyParams) error
 	SeedSystemAccount(ctx context.Context, arg SeedSystemAccountParams) error
 }

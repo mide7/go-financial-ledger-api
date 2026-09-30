@@ -9,6 +9,28 @@ import (
 	"context"
 )
 
+const seedAccountType = `-- name: SeedAccountType :exec
+INSERT INTO account_types (type, nature, normal_balance, description)
+VALUES ($1, $2, $3, $4) ON CONFLICT (type) DO NOTHING
+`
+
+type SeedAccountTypeParams struct {
+	Type          string    `json:"type"`
+	Nature        string    `json:"nature"`
+	NormalBalance EntryType `json:"normal_balance"`
+	Description   string    `json:"description"`
+}
+
+func (q *Queries) SeedAccountType(ctx context.Context, arg SeedAccountTypeParams) error {
+	_, err := q.db.Exec(ctx, seedAccountType,
+		arg.Type,
+		arg.Nature,
+		arg.NormalBalance,
+		arg.Description,
+	)
+	return err
+}
+
 const seedCurrency = `-- name: SeedCurrency :exec
 INSERT INTO currencies (code, name, exponent, is_active)
 VALUES ($1, $2, $3, $4) ON CONFLICT (code) DO NOTHING

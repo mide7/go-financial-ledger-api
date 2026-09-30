@@ -1,4 +1,4 @@
--- 4. Account Status History Table
+-- 6. Account Status History Table
 CREATE TABLE IF NOT EXISTS account_status_history (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS account_status_history (
         actor_type IN ('SYSTEM', 'ADMIN_USER', 'RISK_ENGINE')
     )
 );
--- 5. Balance Snapshots Table
+-- 7. Balance Snapshots Table
 CREATE TABLE IF NOT EXISTS balance_snapshots (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS balance_snapshots (
     --
     CONSTRAINT uq_account_sequence UNIQUE (account_id, last_entry_sequence)
 );
--- 6. Discrepancy Records Table
+-- 8. Discrepancy Records Table
 CREATE TABLE IF NOT EXISTS discrepancy_records (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS discrepancy_records (
     resolved_at TIMESTAMPTZ,
     resolution_notes TEXT
 );
--- 7. Idempotency Table
+-- 9. Idempotency Table
 CREATE TABLE IF NOT EXISTS idempotency_records (
     key VARCHAR(256) PRIMARY KEY,
     request_hash VARCHAR(64) NOT NULL,

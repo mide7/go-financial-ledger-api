@@ -56,24 +56,24 @@ func (ns NullEntryType) Value() (driver.Value, error) {
 }
 
 type Account struct {
-	ID        uuid.UUID `json:"id"`
-	OwnerID   string    `json:"owner_id"`
-	Type      string    `json:"type"`
-	Currency  string    `json:"currency"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uuid.UUID   `json:"id"`
+	OwnerID   string      `json:"owner_id"`
+	Type      string      `json:"type"`
+	Currency  string      `json:"currency"`
+	Status    interface{} `json:"status"`
+	CreatedAt time.Time   `json:"created_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
 }
 
 type AccountStatusHistory struct {
-	ID             uuid.UUID `json:"id"`
-	AccountID      uuid.UUID `json:"account_id"`
-	PreviousStatus string    `json:"previous_status"`
-	NewStatus      string    `json:"new_status"`
-	Reason         string    `json:"reason"`
-	ActorType      string    `json:"actor_type"`
-	ActorID        string    `json:"actor_id"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID             uuid.UUID   `json:"id"`
+	AccountID      uuid.UUID   `json:"account_id"`
+	PreviousStatus interface{} `json:"previous_status"`
+	NewStatus      interface{} `json:"new_status"`
+	Reason         string      `json:"reason"`
+	ActorType      string      `json:"actor_type"`
+	ActorID        string      `json:"actor_id"`
+	CreatedAt      time.Time   `json:"created_at"`
 }
 
 type AccountType struct {

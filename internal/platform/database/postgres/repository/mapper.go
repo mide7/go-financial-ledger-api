@@ -15,7 +15,7 @@ func mapToAccountDomain(a *sqlc.Account) *account.Account {
 	return &account.Account{
 		ID:        a.ID,
 		OwnerID:   a.OwnerID,
-		Type:      a.Type,
+		Type:      account.AccountType(a.Type),
 		Currency:  currency.Code(a.Currency),
 		CreatedAt: a.CreatedAt,
 		UpdatedAt: a.UpdatedAt,

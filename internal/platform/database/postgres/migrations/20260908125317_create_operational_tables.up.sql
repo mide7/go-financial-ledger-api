@@ -2,18 +2,24 @@
 CREATE TABLE IF NOT EXISTS account_status_history (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
-    previous_status VARCHAR(32) NOT NULL,
-    new_status VARCHAR(32) NOT NULL,
+    previous_status account_status,
+    new_status account_status NOT NULL,
     reason TEXT NOT NULL,
+    -- 'SYSTEM', 'ADMIN',
     actor_type VARCHAR(32) NOT NULL,
-    -- 'SYSTEM', 'ADMIN_USER', 'RISK_ENGINE'
-    actor_id VARCHAR(64) NOT NULL,
     -- ID of the admin or system service triggering the freeze
+    actor_id VARCHAR(64) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT chk_status_history_actors CHECK (
-        actor_type IN ('SYSTEM', 'ADMIN_USER', 'RISK_ENGINE')
+    -- 
+    CONSTRAINT chk_status_history_actors CHECK (actor_type IN ('SYSTEM', 'ADMIN')),
+    CONSTRAINT chk_history_status_changed CHECK (
+        previous_status IS DISTINCT
+        FROM new_status
     )
 );
+-- allow only initial previous_status be null
+CREATE UNIQUE INDEX uq_account_status_history_initial ON account_status_history (account_id)
+WHERE previous_status IS NULL;
 -- 7. Balance Snapshots Table
 CREATE TABLE IF NOT EXISTS balance_snapshots (
     id UUID PRIMARY KEY DEFAULT uuidv7(),

@@ -163,10 +163,54 @@ func (q *Queries) GetAccountByOwnerTypeCurrency(ctx context.Context, arg GetAcco
 }
 
 const getAccountStatementEntries = `-- name: GetAccountStatementEntries :many
-WITH cursor_seq AS (
+WITH acct AS (
+    SELECT a.id,
+        a.currency,
+        at.normal_balance
+    FROM accounts a
+        JOIN account_types at ON at.type = a.type
+    WHERE a.id = $1::uuid
+),
+cursor_seq AS (
     SELECT entry_sequence
     FROM entries
-    WHERE id = $3::uuid
+    WHERE id = $2::uuid
+        AND account_id = $1::uuid
+),
+page AS (
+    SELECT e.id,
+        e.entry_sequence
+    FROM entries e
+    WHERE e.account_id = $1::uuid
+        AND e.created_at >= $3::timestamptz
+        AND e.created_at < $4::timestamptz
+        AND (
+            $2::uuid IS NULL
+            OR e.entry_sequence < (
+                SELECT entry_sequence
+                FROM cursor_seq
+            )
+        )
+    ORDER BY e.entry_sequence DESC
+    LIMIT $5::int
+), bounds AS (
+    SELECT MIN(entry_sequence) AS lo,
+        MAX(entry_sequence) AS hi
+    FROM page
+),
+base AS (
+    SELECT COALESCE(s.balance, 0) AS balance,
+        COALESCE(s.last_entry_sequence, 0) AS seq
+    FROM bounds b
+        LEFT JOIN LATERAL (
+            SELECT balance,
+                last_entry_sequence
+            FROM balance_snapshots
+            WHERE account_id = $1::uuid
+                AND last_entry_sequence < b.lo
+            ORDER BY last_entry_sequence DESC
+            LIMIT 1
+        ) s ON true
 ),
 running AS (
     SELECT e.id,
@@ -175,55 +219,47 @@ running AS (
         e.amount,
         e.entry_sequence,
         e.created_at,
-        t.description,
-        t.currency,
-        c.exponent,
-        SUM(
-            CASE
-                WHEN e.type = at.normal_balance THEN e.amount
-                ELSE - e.amount
-            END
-        ) OVER (
-            PARTITION BY e.account_id
-            ORDER BY e.entry_sequence ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        ) AS running_balance
-    FROM entries e
-        JOIN transactions t ON t.id = e.transaction_id
-        JOIN currencies c ON c.code = t.currency
-        JOIN accounts a ON a.id = e.account_id
-        JOIN account_types at ON at.type = a.type
-    WHERE e.account_id = $5::uuid
+        (
+            base.balance + SUM(
+                CASE
+                    WHEN e.type = acct.normal_balance THEN e.amount
+                    ELSE - e.amount
+                END
+            ) OVER (
+                ORDER BY e.entry_sequence ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            )
+        )::bigint AS running_balance
+    FROM acct
+        CROSS JOIN base
+        CROSS JOIN bounds b
+        JOIN entries e ON e.account_id = acct.id
+        AND e.entry_sequence > base.seq
+        AND e.entry_sequence <= b.hi
 )
-SELECT id,
-    transaction_id,
-    type,
-    amount,
-    running_balance,
-    currency,
-    exponent,
-    description,
-    entry_sequence,
-    created_at
-FROM running
-WHERE created_at >= $1::timestamptz
-    AND created_at < $2::timestamptz
-    AND (
-        $3::uuid IS NULL
-        OR entry_sequence < (
-            SELECT entry_sequence
-            FROM cursor_seq
-        )
-    )
-ORDER BY entry_sequence DESC
-LIMIT $4::int
+SELECT r.id,
+    r.transaction_id,
+    r.type,
+    r.amount,
+    r.running_balance,
+    acct.currency,
+    c.exponent,
+    t.description,
+    r.entry_sequence,
+    r.created_at
+FROM running r
+    JOIN page p ON p.id = r.id
+    JOIN acct ON true
+    JOIN transactions t ON t.id = r.transaction_id
+    JOIN currencies c ON c.code = acct.currency
+ORDER BY r.entry_sequence DESC
 `
 
 type GetAccountStatementEntriesParams struct {
+	AccountID  uuid.UUID     `json:"account_id"`
+	CursorID   uuid.NullUUID `json:"cursor_id"`
 	StartDate  time.Time     `json:"start_date"`
 	EndDate    time.Time     `json:"end_date"`
-	CursorID   uuid.NullUUID `json:"cursor_id"`
 	LimitCount int32         `json:"limit_count"`
-	AccountID  uuid.UUID     `json:"account_id"`
 }
 
 type GetAccountStatementEntriesRow struct {
@@ -241,11 +277,11 @@ type GetAccountStatementEntriesRow struct {
 
 func (q *Queries) GetAccountStatementEntries(ctx context.Context, arg GetAccountStatementEntriesParams) ([]GetAccountStatementEntriesRow, error) {
 	rows, err := q.db.Query(ctx, getAccountStatementEntries,
+		arg.AccountID,
+		arg.CursorID,
 		arg.StartDate,
 		arg.EndDate,
-		arg.CursorID,
 		arg.LimitCount,
-		arg.AccountID,
 	)
 	if err != nil {
 		return nil, err
@@ -509,75 +545,71 @@ func (q *Queries) ListAccounts(ctx context.Context, arg ListAccountsParams) ([]A
 }
 
 const reconcileAccount = `-- name: ReconcileAccount :one
-WITH account_currency AS (
+WITH account_ctx AS (
     SELECT a.id AS account_id,
         a.currency,
-        c.exponent
+        c.exponent,
+        at.normal_balance
     FROM accounts a
         JOIN currencies c ON c.code = a.currency
-    WHERE a.id = $1
+        JOIN account_types at ON at.type = a.type
+    WHERE a.id = $1::uuid
 ),
 latest_snapshot AS (
     SELECT bs.balance,
         bs.last_entry_sequence
     FROM balance_snapshots bs
-    WHERE bs.account_id = $1
+    WHERE bs.account_id = $1::uuid
     ORDER BY bs.last_entry_sequence DESC
     LIMIT 1
-), raw_ledger AS (
+), ledger AS (
+    -- Single pass over entries instead of two scans
     SELECT COALESCE(
             SUM(
                 CASE
-                    WHEN e.type = 'DEBIT' THEN e.amount
+                    WHEN e.type = ac.normal_balance THEN e.amount
                     ELSE - e.amount
                 END
             ),
             0
         )::bigint AS raw_sum,
-        COALESCE(MAX(e.entry_sequence), 0)::bigint AS max_sequence
-    FROM entries e
-    WHERE e.account_id = $1
-),
-delta AS (
-    SELECT COALESCE(
+        COALESCE(
             SUM(
                 CASE
-                    WHEN e.type = 'DEBIT' THEN e.amount
+                    WHEN e.type = ac.normal_balance THEN e.amount
                     ELSE - e.amount
                 END
+            ) FILTER (
+                WHERE e.entry_sequence > COALESCE(ls.last_entry_sequence, 0)
             ),
             0
-        )::bigint AS delta_sum
+        )::bigint AS delta_sum,
+        COALESCE(MAX(e.entry_sequence), 0)::bigint AS max_sequence
     FROM entries e
-    WHERE e.account_id = $1
-        AND e.entry_sequence > COALESCE(
-            (
-                SELECT last_entry_sequence
-                FROM latest_snapshot
-            ),
-            0
-        )
+        CROSS JOIN account_ctx ac
+        LEFT JOIN latest_snapshot ls ON true
+    WHERE e.account_id = ac.account_id
 )
 SELECT ac.account_id,
     CASE
-        WHEN rl.raw_sum = COALESCE(ls.balance, 0) + d.delta_sum THEN 'RECONCILED'
+        WHEN l.raw_sum = COALESCE(ls.balance, 0)::bigint + l.delta_sum THEN 'RECONCILED'
         ELSE 'DISCREPANCY_DETECTED'
-    END AS status,
-    ac.currency,
-    ac.exponent,
-    rl.raw_sum AS raw_ledger_sum,
+    END::text AS status,
+    ac.currency::text AS currency,
+    ac.exponent::smallint AS exponent,
+    ac.normal_balance::text AS normal_balance,
+    l.raw_sum AS raw_ledger_sum,
     COALESCE(ls.balance, 0)::bigint AS snapshot_balance,
-    d.delta_sum AS delta_since_snapshot,
-    (COALESCE(ls.balance, 0) + d.delta_sum)::bigint AS calculated_total,
+    l.delta_sum AS delta_since_snapshot,
+    (COALESCE(ls.balance, 0)::bigint + l.delta_sum)::bigint AS calculated_total,
     (
-        rl.raw_sum - (COALESCE(ls.balance, 0) + d.delta_sum)
+        l.raw_sum - (COALESCE(ls.balance, 0)::bigint + l.delta_sum)
     )::bigint AS discrepancy_amount,
     COALESCE(ls.last_entry_sequence, 0)::bigint AS last_snapshot_sequence,
-    rl.max_sequence AS current_max_sequence,
+    l.max_sequence AS current_max_sequence,
     NOW()::timestamptz AS reconciled_at
-FROM account_currency ac
-    CROSS JOIN raw_ledger rl
-    CROSS JOIN delta d
+FROM account_ctx ac
+    CROSS JOIN ledger l
     LEFT JOIN latest_snapshot ls ON true
 `
 
@@ -586,6 +618,7 @@ type ReconcileAccountRow struct {
 	Status               string    `json:"status"`
 	Currency             string    `json:"currency"`
 	Exponent             int16     `json:"exponent"`
+	NormalBalance        string    `json:"normal_balance"`
 	RawLedgerSum         int64     `json:"raw_ledger_sum"`
 	SnapshotBalance      int64     `json:"snapshot_balance"`
 	DeltaSinceSnapshot   int64     `json:"delta_since_snapshot"`
@@ -604,6 +637,7 @@ func (q *Queries) ReconcileAccount(ctx context.Context, accountID uuid.UUID) (Re
 		&i.Status,
 		&i.Currency,
 		&i.Exponent,
+		&i.NormalBalance,
 		&i.RawLedgerSum,
 		&i.SnapshotBalance,
 		&i.DeltaSinceSnapshot,

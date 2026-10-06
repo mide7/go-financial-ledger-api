@@ -52,3 +52,12 @@ type GetStatementEntriesParams struct {
 	Limit     int32
 	Cursor    uuid.NullUUID
 }
+
+type StatusChangeParams struct {
+	AccountID      uuid.UUID
+	NewStatus      AccountStatus
+	ExpectedStatus *AccountStatus // optimistic check; nil = skip
+	Reason         string
+	ActorType      ActorType // SYSTEM | ADMIN_USER | RISK_ENGINE
+	ActorID        string
+}

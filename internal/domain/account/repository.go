@@ -18,13 +18,12 @@ type Repository interface {
 	GetBalance(ctx context.Context, accountID uuid.UUID) (*GetAccountBalanceResult, error)
 	GetStatementSummary(ctx context.Context, params GetStatementSummaryParams) (*StatementSummary, error)
 	GetStatementEntries(ctx context.Context, params GetStatementEntriesParams) ([]StatementEntry, error)
-	Reconcile(ctx context.Context, accountID string) (*ReconciliationResult, error)
+	Reconcile(ctx context.Context, accountID uuid.UUID) (*ReconciliationResult, error)
 
-	// Freeze / hold management
-	FreezeAccount(ctx context.Context, accountID, reason string) error
-	UnfreezeAccount(ctx context.Context, accountID, resolutionNotes string) error
-	IsFrozen(ctx context.Context, accountID string) (bool, error)
-	GetFrozenAccounts(ctx context.Context, accountIDs []string) ([]string, error)
+	// Status management
+	ChangeAccountStatus(ctx context.Context, params StatusChangeParams) (*StatusHistory, error)
+	GetAccountStatus(ctx context.Context, accountID uuid.UUID) (AccountStatus, error)
+	GetAccountStatusHistory(ctx context.Context, accountID uuid.UUID) ([]StatusHistory, error)
 
 	// Discrepancy audit trail
 	InsertDiscrepancyRecord(ctx context.Context, r *ReconciliationResult) (*DiscrepancyRecord, error)

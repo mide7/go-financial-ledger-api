@@ -13,25 +13,63 @@ var (
 	ErrAccountNotFound  = errors.New("account not found")
 	ErrInvalidCurrency  = errors.New("invalid currency code: must be 3-letter ISO code")
 	ErrInvalidType      = errors.New("invalid account type")
+	ErrInvalidStatus    = errors.New("invalid account status")
+	ErrInvalidActorType = errors.New("invalid actor type")
 	ErrAccountExists    = errors.New("account already exists for owner, type, and currency")
 	ErrDiscrepancyFound = errors.New("reconciliation failure: balance discrepancy detected")
 )
 
+type AccountStatus string
+type AccountType string
+type ActorType string
+
 // Allowed Account Types
 const (
-	TypeUserWallet              = "USER_WALLET"
-	TypePlatformEscrowLiability = "PLATFORM_ESCROW_LIABILITY"
-	TypePlatformFeeRevenue      = "PLATFORM_FEE_REVENUE"
-	TypeMerchantPayable         = "MERCHANT_PAYABLE"
+	TypeUserWallet              AccountType = "USER_WALLET"
+	TypeUserLocked              AccountType = "USER_LOCKED"
+	TypeMerchantWallet          AccountType = "MERCHANT_WALLET"
+	TypeMerchantPayable         AccountType = "MERCHANT_PAYABLE"
+	TypeMerchantReserve         AccountType = "MERCHANT_RESERVE"
+	TypePlatformEscrowLiability AccountType = "PLATFORM_ESCROW_LIABILITY"
+	TypePlatformFeeRevenue      AccountType = "PLATFORM_FEE_REVENUE"
+	TypePlatformCash            AccountType = "PLATFORM_CASH"
+	TypePlatformFxSuspense      AccountType = "PLATFORM_FX_SUSPENSE"
+	TypePlatformFxGainLoss      AccountType = "PLATFORM_FX_GAIN_LOSS"
+)
+
+// Allowed Account Statuses
+const (
+	StatusActive           AccountStatus = "ACTIVE"
+	StatusFullyFrozen      AccountStatus = "FULLY_FROZEN"
+	StatusDebitRestricted  AccountStatus = "DEBIT_RESTRICTED"
+	StatusCreditRestricted AccountStatus = "CREDIT_RESTRICTED"
+	StatusClosed           AccountStatus = "CLOSED"
+)
+
+// Allowed Actor Types
+const (
+	ActorTypeSystem ActorType = "SYSTEM"
+	ActorTypeAdmin  ActorType = "ADMIN"
 )
 
 type Account struct {
 	ID        uuid.UUID     `json:"id"`
 	OwnerID   string        `json:"owner_id"`
-	Type      string        `json:"type"`
+	Type      AccountType   `json:"type"`
 	Currency  currency.Code `json:"currency"`
 	CreatedAt time.Time     `json:"created_at"`
 	UpdatedAt time.Time     `json:"updated_at"`
+}
+
+type StatusHistory struct {
+	ID             uuid.UUID     `json:"id"`
+	AccountID      uuid.UUID     `json:"account_id"`
+	PreviousStatus AccountStatus `json:"previous_status"`
+	NewStatus      AccountStatus `json:"new_status"`
+	Reason         string        `json:"reason"`
+	ActorType      ActorType     `json:"actor_type"`
+	ActorID        string        `json:"actor_id"`
+	CreatedAt      time.Time     `json:"created_at"`
 }
 
 type GetAccountBalanceResult struct {

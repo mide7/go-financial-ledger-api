@@ -1,4 +1,18 @@
 CREATE TYPE entry_type AS ENUM ('DEBIT', 'CREDIT');
+CREATE DOMAIN account_status AS VARCHAR(32) CONSTRAINT chk_account_status CHECK (
+    VALUE IN (
+        -- Can receive funds and transfer out
+        'ACTIVE',
+        -- Cannot receive funds or transfer out
+        'FULLY_FROZEN',
+        -- Can receive funds, cannot transfer out
+        'DEBIT_RESTRICTED',
+        -- Can transfer out, cannot receive funds
+        'CREDIT_RESTRICTED',
+        -- Can neither receive nor transfer out, permanently closed
+        'CLOSED'
+    )
+);
 -- 1. Currency Table
 CREATE TABLE IF NOT EXISTS currencies (
     -- ISO 4217 (e.g., 'NGN', 'USD')
@@ -30,23 +44,10 @@ CREATE TABLE IF NOT EXISTS accounts (
     owner_id VARCHAR(64) NOT NULL,
     type VARCHAR(64) NOT NULL REFERENCES account_types(type) ON DELETE RESTRICT,
     currency VARCHAR(3) NOT NULL DEFAULT 'NGN' REFERENCES currencies(code) ON DELETE RESTRICT,
-    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    status account_status NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT chk_account_status CHECK (
-        status IN (
-            -- Can receive funds and transfer out
-            'ACTIVE',
-            -- Cannot receive funds or transfer out
-            'FULLY_FROZEN',
-            -- Can receive funds, cannot transfer out
-            'DEBIT_RESTRICTED',
-            -- Can transfer out, cannot receive funds
-            'CREDIT_RESTRICTED',
-            -- Can neither receive nor transfer out, permanently closed
-            'CLOSED'
-        )
-    ),
+    --
     CONSTRAINT uq_owner_type_currency UNIQUE (owner_id, type, currency)
 );
 -- 4. Transactions Table 

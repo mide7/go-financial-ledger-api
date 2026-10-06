@@ -127,21 +127,20 @@ func (r *accountRepository) GetStatementEntries(ctx context.Context, params acco
 	return nil, nil
 }
 
-func (r *accountRepository) Reconcile(ctx context.Context, accountID string) (*account.ReconciliationResult, error) {
+func (r *accountRepository) Reconcile(ctx context.Context, accountID uuid.UUID) (*account.ReconciliationResult, error) {
 	return nil, nil
 }
 
-// Freeze / hold management
-func (r *accountRepository) FreezeAccount(ctx context.Context, accountID, reason string) error {
-	return nil
+// Status management
+func (r *accountRepository) ChangeAccountStatus(ctx context.Context, params account.StatusChangeParams) (*account.StatusHistory, error) {
+	return nil, nil
 }
-func (r *accountRepository) UnfreezeAccount(ctx context.Context, accountID, resolutionNotes string) error {
-	return nil
+
+func (r *accountRepository) GetAccountStatus(ctx context.Context, accountIDs uuid.UUID) (account.AccountStatus, error) {
+	return "", nil
 }
-func (r *accountRepository) IsFrozen(ctx context.Context, accountID string) (bool, error) {
-	return false, nil
-}
-func (r *accountRepository) GetFrozenAccounts(ctx context.Context, accountIDs []string) ([]string, error) {
+
+func (r *accountRepository) GetAccountStatusHistory(ctx context.Context, accountIDs uuid.UUID) ([]account.StatusHistory, error) {
 	return nil, nil
 }
 

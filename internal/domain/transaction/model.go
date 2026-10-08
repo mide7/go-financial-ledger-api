@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mide7/go-financial-ledger-api/internal/domain"
 )
 
 var (
@@ -18,30 +19,14 @@ var (
 	ErrInvalidAccountID      = errors.New("account ID cannot be empty")
 )
 
-type EntryType string
-
-const (
-	EntryTypeDebit  EntryType = "DEBIT"
-	EntryTypeCredit EntryType = "CREDIT"
-)
-
-func (t EntryType) IsValid() bool {
-	switch t {
-	case EntryTypeDebit, EntryTypeCredit:
-		return true
-	default:
-		return false
-	}
-}
-
 type Entry struct {
-	ID            uuid.UUID `json:"id"`
-	TransactionID uuid.UUID `json:"transaction_id"`
-	AccountID     uuid.UUID `json:"account_id"`
-	Type          EntryType `json:"type"`
-	Amount        int64     `json:"amount"`
-	EntrySequence int64     `json:"entry_sequence"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID            uuid.UUID        `json:"id"`
+	TransactionID uuid.UUID        `json:"transaction_id"`
+	AccountID     uuid.UUID        `json:"account_id"`
+	Type          domain.EntryType `json:"type"`
+	Amount        int64            `json:"amount"`
+	EntrySequence int64            `json:"entry_sequence"`
+	CreatedAt     time.Time        `json:"created_at"`
 }
 
 type Transaction struct {

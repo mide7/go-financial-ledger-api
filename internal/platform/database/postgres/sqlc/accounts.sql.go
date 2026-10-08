@@ -162,154 +162,24 @@ func (q *Queries) GetAccountByOwnerTypeCurrency(ctx context.Context, arg GetAcco
 	return i, err
 }
 
-const getAccountStatementEntries = `-- name: GetAccountStatementEntries :many
-WITH acct AS (
-    SELECT a.id,
-        a.currency,
-        at.normal_balance
-    FROM accounts a
-        JOIN account_types at ON at.type = a.type
-    WHERE a.id = $1::uuid
-),
-cursor_seq AS (
-    SELECT entry_sequence
-    FROM entries
-    WHERE id = $2::uuid
-        AND account_id = $1::uuid
-),
-page AS (
-    SELECT e.id,
-        e.entry_sequence
-    FROM entries e
-    WHERE e.account_id = $1::uuid
-        AND e.created_at >= $3::timestamptz
-        AND e.created_at < $4::timestamptz
-        AND (
-            $2::uuid IS NULL
-            OR e.entry_sequence < (
-                SELECT entry_sequence
-                FROM cursor_seq
-            )
-        )
-    ORDER BY e.entry_sequence DESC
-    LIMIT $5::int
-), bounds AS (
-    SELECT MIN(entry_sequence) AS lo,
-        MAX(entry_sequence) AS hi
-    FROM page
-),
-base AS (
-    SELECT COALESCE(s.balance, 0) AS balance,
-        COALESCE(s.last_entry_sequence, 0) AS seq
-    FROM bounds b
-        LEFT JOIN LATERAL (
-            SELECT balance,
-                last_entry_sequence
-            FROM balance_snapshots
-            WHERE account_id = $1::uuid
-                AND last_entry_sequence < b.lo
-            ORDER BY last_entry_sequence DESC
-            LIMIT 1
-        ) s ON true
-),
-running AS (
-    SELECT e.id,
-        e.transaction_id,
-        e.type,
-        e.amount,
-        e.entry_sequence,
-        e.created_at,
-        (
-            base.balance + SUM(
-                CASE
-                    WHEN e.type = acct.normal_balance THEN e.amount
-                    ELSE - e.amount
-                END
-            ) OVER (
-                ORDER BY e.entry_sequence ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-            )
-        )::bigint AS running_balance
-    FROM acct
-        CROSS JOIN base
-        CROSS JOIN bounds b
-        JOIN entries e ON e.account_id = acct.id
-        AND e.entry_sequence > base.seq
-        AND e.entry_sequence <= b.hi
-)
-SELECT r.id,
-    r.transaction_id,
-    r.type,
-    r.amount,
-    r.running_balance,
-    acct.currency,
-    c.exponent,
-    t.description,
-    r.entry_sequence,
-    r.created_at
-FROM running r
-    JOIN page p ON p.id = r.id
-    JOIN acct ON true
-    JOIN transactions t ON t.id = r.transaction_id
-    JOIN currencies c ON c.code = acct.currency
-ORDER BY r.entry_sequence DESC
+const getAccountForUpdate = `-- name: GetAccountForUpdate :one
+SELECT id,
+    status
+FROM accounts
+WHERE id = $1 FOR
+UPDATE
 `
 
-type GetAccountStatementEntriesParams struct {
-	AccountID  uuid.UUID     `json:"account_id"`
-	CursorID   uuid.NullUUID `json:"cursor_id"`
-	StartDate  time.Time     `json:"start_date"`
-	EndDate    time.Time     `json:"end_date"`
-	LimitCount int32         `json:"limit_count"`
+type GetAccountForUpdateRow struct {
+	ID     uuid.UUID `json:"id"`
+	Status string    `json:"status"`
 }
 
-type GetAccountStatementEntriesRow struct {
-	ID             uuid.UUID `json:"id"`
-	TransactionID  uuid.UUID `json:"transaction_id"`
-	Type           EntryType `json:"type"`
-	Amount         int64     `json:"amount"`
-	RunningBalance int64     `json:"running_balance"`
-	Currency       string    `json:"currency"`
-	Exponent       int16     `json:"exponent"`
-	Description    string    `json:"description"`
-	EntrySequence  int64     `json:"entry_sequence"`
-	CreatedAt      time.Time `json:"created_at"`
-}
-
-func (q *Queries) GetAccountStatementEntries(ctx context.Context, arg GetAccountStatementEntriesParams) ([]GetAccountStatementEntriesRow, error) {
-	rows, err := q.db.Query(ctx, getAccountStatementEntries,
-		arg.AccountID,
-		arg.CursorID,
-		arg.StartDate,
-		arg.EndDate,
-		arg.LimitCount,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GetAccountStatementEntriesRow{}
-	for rows.Next() {
-		var i GetAccountStatementEntriesRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.TransactionID,
-			&i.Type,
-			&i.Amount,
-			&i.RunningBalance,
-			&i.Currency,
-			&i.Exponent,
-			&i.Description,
-			&i.EntrySequence,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) GetAccountForUpdate(ctx context.Context, accountID uuid.UUID) (GetAccountForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getAccountForUpdate, accountID)
+	var i GetAccountForUpdateRow
+	err := row.Scan(&i.ID, &i.Status)
+	return i, err
 }
 
 const getAccountStatementSummary = `-- name: GetAccountStatementSummary :one
@@ -411,29 +281,159 @@ func (q *Queries) GetAccountStatementSummary(ctx context.Context, arg GetAccount
 	return i, err
 }
 
-const getAccountsByOwnerID = `-- name: GetAccountsByOwnerID :many
-SELECT id, owner_id, type, currency, status, created_at, updated_at
+const getAccountStatus = `-- name: GetAccountStatus :one
+SELECT status
 FROM accounts
-WHERE owner_id = $1
+WHERE id = $1
+LIMIT 1
 `
 
-func (q *Queries) GetAccountsByOwnerID(ctx context.Context, ownerID string) ([]Account, error) {
-	rows, err := q.db.Query(ctx, getAccountsByOwnerID, ownerID)
+func (q *Queries) GetAccountStatus(ctx context.Context, accountID uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getAccountStatus, accountID)
+	var status string
+	err := row.Scan(&status)
+	return status, err
+}
+
+const listAccountStatementEntries = `-- name: ListAccountStatementEntries :many
+WITH acct AS (
+    SELECT a.id,
+        a.currency,
+        at.normal_balance
+    FROM accounts a
+        JOIN account_types at ON at.type = a.type
+    WHERE a.id = $1::uuid
+),
+cursor_seq AS (
+    SELECT entry_sequence
+    FROM entries
+    WHERE id = $2::uuid
+        AND account_id = $1::uuid
+),
+page AS (
+    SELECT e.id,
+        e.entry_sequence
+    FROM entries e
+    WHERE e.account_id = $1::uuid
+        AND e.created_at >= $3::timestamptz
+        AND e.created_at < $4::timestamptz
+        AND (
+            $2::uuid IS NULL
+            OR e.entry_sequence < (
+                SELECT entry_sequence
+                FROM cursor_seq
+            )
+        )
+    ORDER BY e.entry_sequence DESC
+    LIMIT $5::int
+), bounds AS (
+    SELECT MIN(entry_sequence) AS lo,
+        MAX(entry_sequence) AS hi
+    FROM page
+),
+base AS (
+    SELECT COALESCE(s.balance, 0) AS balance,
+        COALESCE(s.last_entry_sequence, 0) AS seq
+    FROM bounds b
+        LEFT JOIN LATERAL (
+            SELECT balance,
+                last_entry_sequence
+            FROM balance_snapshots
+            WHERE account_id = $1::uuid
+                AND last_entry_sequence < b.lo
+            ORDER BY last_entry_sequence DESC
+            LIMIT 1
+        ) s ON true
+),
+running AS (
+    SELECT e.id,
+        e.transaction_id,
+        e.type,
+        e.amount,
+        e.entry_sequence,
+        e.created_at,
+        (
+            base.balance + SUM(
+                CASE
+                    WHEN e.type = acct.normal_balance THEN e.amount
+                    ELSE - e.amount
+                END
+            ) OVER (
+                ORDER BY e.entry_sequence ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            )
+        )::bigint AS running_balance
+    FROM acct
+        CROSS JOIN base
+        CROSS JOIN bounds b
+        JOIN entries e ON e.account_id = acct.id
+        AND e.entry_sequence > base.seq
+        AND e.entry_sequence <= b.hi
+)
+SELECT r.id,
+    r.transaction_id,
+    r.type,
+    r.amount,
+    r.running_balance,
+    acct.currency,
+    c.exponent,
+    t.description,
+    r.entry_sequence,
+    r.created_at
+FROM running r
+    JOIN page p ON p.id = r.id
+    JOIN acct ON true
+    JOIN transactions t ON t.id = r.transaction_id
+    JOIN currencies c ON c.code = acct.currency
+ORDER BY r.entry_sequence DESC
+`
+
+type ListAccountStatementEntriesParams struct {
+	AccountID uuid.UUID     `json:"account_id"`
+	Cursor    uuid.NullUUID `json:"cursor"`
+	StartDate time.Time     `json:"start_date"`
+	EndDate   time.Time     `json:"end_date"`
+	Limit     int32         `json:"limit"`
+}
+
+type ListAccountStatementEntriesRow struct {
+	ID             uuid.UUID `json:"id"`
+	TransactionID  uuid.UUID `json:"transaction_id"`
+	Type           EntryType `json:"type"`
+	Amount         int64     `json:"amount"`
+	RunningBalance int64     `json:"running_balance"`
+	Currency       string    `json:"currency"`
+	Exponent       int16     `json:"exponent"`
+	Description    string    `json:"description"`
+	EntrySequence  int64     `json:"entry_sequence"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+func (q *Queries) ListAccountStatementEntries(ctx context.Context, arg ListAccountStatementEntriesParams) ([]ListAccountStatementEntriesRow, error) {
+	rows, err := q.db.Query(ctx, listAccountStatementEntries,
+		arg.AccountID,
+		arg.Cursor,
+		arg.StartDate,
+		arg.EndDate,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Account{}
+	items := []ListAccountStatementEntriesRow{}
 	for rows.Next() {
-		var i Account
+		var i ListAccountStatementEntriesRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.OwnerID,
+			&i.TransactionID,
 			&i.Type,
+			&i.Amount,
+			&i.RunningBalance,
 			&i.Currency,
-			&i.Status,
+			&i.Exponent,
+			&i.Description,
+			&i.EntrySequence,
 			&i.CreatedAt,
-			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -544,6 +544,40 @@ func (q *Queries) ListAccounts(ctx context.Context, arg ListAccountsParams) ([]A
 	return items, nil
 }
 
+const listAccountsByOwnerID = `-- name: ListAccountsByOwnerID :many
+SELECT id, owner_id, type, currency, status, created_at, updated_at
+FROM accounts
+WHERE owner_id = $1
+`
+
+func (q *Queries) ListAccountsByOwnerID(ctx context.Context, ownerID string) ([]Account, error) {
+	rows, err := q.db.Query(ctx, listAccountsByOwnerID, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Account{}
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerID,
+			&i.Type,
+			&i.Currency,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const reconcileAccount = `-- name: ReconcileAccount :one
 WITH account_ctx AS (
     SELECT a.id AS account_id,
@@ -563,7 +597,6 @@ latest_snapshot AS (
     ORDER BY bs.last_entry_sequence DESC
     LIMIT 1
 ), ledger AS (
-    -- Single pass over entries instead of two scans
     SELECT COALESCE(
             SUM(
                 CASE
@@ -648,4 +681,21 @@ func (q *Queries) ReconcileAccount(ctx context.Context, accountID uuid.UUID) (Re
 		&i.ReconciledAt,
 	)
 	return i, err
+}
+
+const updateAccountStatus = `-- name: UpdateAccountStatus :exec
+UPDATE accounts
+SET status = $1,
+    updated_at = NOW()
+WHERE id = $2
+`
+
+type UpdateAccountStatusParams struct {
+	Status    string    `json:"status"`
+	AccountID uuid.UUID `json:"account_id"`
+}
+
+func (q *Queries) UpdateAccountStatus(ctx context.Context, arg UpdateAccountStatusParams) error {
+	_, err := q.db.Exec(ctx, updateAccountStatus, arg.Status, arg.AccountID)
+	return err
 }

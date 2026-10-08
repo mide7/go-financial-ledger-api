@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mide7/go-financial-ledger-api/internal/domain"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
 )
@@ -33,7 +34,7 @@ func (d CreateTransactionDTO) ToDomainParams() (transaction.CreateTransactionPar
 		}
 		entries[i] = transaction.EntryParams{
 			AccountID: accID,
-			Type:      transaction.EntryType(e.Type),
+			Type:      domain.EntryType(e.Type),
 			Amount:    e.Amount,
 		}
 	}

@@ -17,13 +17,13 @@ type Repository interface {
 	// Balance & Audit queries
 	GetBalance(ctx context.Context, accountID uuid.UUID) (*GetAccountBalanceResult, error)
 	GetStatementSummary(ctx context.Context, params GetStatementSummaryParams) (*StatementSummary, error)
-	GetStatementEntries(ctx context.Context, params GetStatementEntriesParams) ([]StatementEntry, error)
+	ListStatementEntries(ctx context.Context, params GetStatementEntriesParams) ([]StatementEntry, error)
 	Reconcile(ctx context.Context, accountID uuid.UUID) (*ReconciliationResult, error)
 
 	// Status management
 	ChangeAccountStatus(ctx context.Context, params StatusChangeParams) (*StatusHistory, error)
 	GetAccountStatus(ctx context.Context, accountID uuid.UUID) (AccountStatus, error)
-	GetAccountStatusHistory(ctx context.Context, accountID uuid.UUID) ([]StatusHistory, error)
+	ListAccountStatusHistory(ctx context.Context, params ListAccountStatusHistoryParams) ([]StatusHistory, error)
 
 	// Discrepancy audit trail
 	InsertDiscrepancyRecord(ctx context.Context, r *ReconciliationResult) (*DiscrepancyRecord, error)

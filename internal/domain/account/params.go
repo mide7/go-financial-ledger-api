@@ -58,6 +58,13 @@ type StatusChangeParams struct {
 	NewStatus      AccountStatus
 	ExpectedStatus *AccountStatus // optimistic check; nil = skip
 	Reason         string
-	ActorType      ActorType // SYSTEM | ADMIN_USER | RISK_ENGINE
+	ActorType      ActorType // SYSTEM | ADMIN
 	ActorID        string
+}
+
+type ListAccountStatusHistoryParams struct {
+	AccountID       uuid.UUID
+	CursorID        uuid.NullUUID
+	CursorCreatedAt *time.Time
+	Limit           int32
 }

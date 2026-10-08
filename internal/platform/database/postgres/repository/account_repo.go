@@ -2,11 +2,15 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/mide7/go-financial-ledger-api/internal/domain"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/sqlc"
@@ -123,25 +127,180 @@ func (r *accountRepository) GetStatementSummary(ctx context.Context, params acco
 	}, nil
 }
 
-func (r *accountRepository) GetStatementEntries(ctx context.Context, params account.GetStatementEntriesParams) ([]account.StatementEntry, error) {
-	return nil, nil
+func (r *accountRepository) ListStatementEntries(ctx context.Context, params account.GetStatementEntriesParams) ([]account.StatementEntry, error) {
+	rows, err := r.queries.ListAccountStatementEntries(ctx, sqlc.ListAccountStatementEntriesParams{
+		AccountID: params.AccountID,
+		StartDate: params.StartDate,
+		EndDate:   params.EndDate,
+		Cursor:    params.Cursor,
+		Limit:     int32(params.Limit),
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make([]account.StatementEntry, len(rows))
+
+	for i, entry := range rows {
+		entryType, err := domain.ParseEntryType(string(entry.Type))
+		if err != nil {
+			return nil, fmt.Errorf("corrupt data for entry %s: %w", entry.ID, err)
+		}
+
+		entries[i] = account.StatementEntry{
+			ID:             entry.ID,
+			TransactionID:  entry.TransactionID,
+			Type:           entryType,
+			Amount:         entry.Amount,
+			RunningBalance: entry.RunningBalance,
+			Currency:       currency.Code(entry.Currency),
+			Exponent:       entry.Exponent,
+			Description:    entry.Description,
+			EntrySequence:  entry.EntrySequence,
+			CreatedAt:      entry.CreatedAt,
+		}
+	}
+
+	return entries, nil
 }
 
 func (r *accountRepository) Reconcile(ctx context.Context, accountID uuid.UUID) (*account.ReconciliationResult, error) {
-	return nil, nil
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := r.queries.WithTx(tx)
+
+	lockedAccount, err := qtx.GetAccountForUpdate(ctx, accountID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, account.ErrAccountNotFound
+	} else if err != nil {
+		return nil, err
+	}
+
+	result, err := qtx.ReconcileAccount(ctx, lockedAccount.ID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	return &account.ReconciliationResult{
+		AccountID:            result.AccountID,
+		Status:               result.Status,
+		Currency:             currency.Code(result.Currency),
+		Exponent:             result.Exponent,
+		RawLedgerSum:         result.RawLedgerSum,
+		SnapshotBalance:      result.SnapshotBalance,
+		DeltaSinceSnapshot:   result.DeltaSinceSnapshot,
+		CalculatedTotal:      result.CalculatedTotal,
+		DiscrepancyAmount:    result.DiscrepancyAmount,
+		LastSnapshotSequence: result.LastSnapshotSequence,
+		CurrentMaxSequence:   result.CurrentMaxSequence,
+		ReconciledAt:         result.ReconciledAt,
+	}, nil
 }
 
 // Status management
 func (r *accountRepository) ChangeAccountStatus(ctx context.Context, params account.StatusChangeParams) (*account.StatusHistory, error) {
-	return nil, nil
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := r.queries.WithTx(tx)
+
+	lockedAccount, err := qtx.GetAccountForUpdate(ctx, params.AccountID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, account.ErrAccountNotFound
+	} else if err != nil {
+		return nil, err
+	}
+
+	if params.ExpectedStatus != nil && *params.ExpectedStatus != account.AccountStatus(lockedAccount.Status) {
+		return nil, fmt.Errorf("account id %q is not in expected status %q", params.AccountID, *params.ExpectedStatus)
+	}
+
+	if err = qtx.UpdateAccountStatus(ctx, sqlc.UpdateAccountStatusParams{
+		AccountID: params.AccountID,
+		Status:    params.NewStatus.String(),
+	}); err != nil {
+		return nil, err
+	}
+
+	result, err := qtx.InsertStatusHistory(ctx, sqlc.InsertStatusHistoryParams{
+		AccountID: params.AccountID,
+		Reason:    params.Reason,
+		ActorType: params.ActorType.String(),
+		ActorID:   params.ActorID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	return &account.StatusHistory{
+		ID:             result.ID,
+		AccountID:      result.AccountID,
+		PreviousStatus: mapStringPointerToAccountStatusPointer(result.PreviousStatus),
+		NewStatus:      account.AccountStatus(result.NewStatus),
+		Reason:         result.Reason,
+		ActorType:      account.ActorType(result.ActorType),
+		ActorID:        result.ActorID,
+		CreatedAt:      result.CreatedAt,
+	}, nil
 }
 
-func (r *accountRepository) GetAccountStatus(ctx context.Context, accountIDs uuid.UUID) (account.AccountStatus, error) {
-	return "", nil
+func (r *accountRepository) GetAccountStatus(ctx context.Context, accountID uuid.UUID) (account.AccountStatus, error) {
+	status, err := r.queries.GetAccountStatus(ctx, accountID)
+	if err != nil {
+		return "", err
+	}
+
+	return account.AccountStatus(status), nil
 }
 
-func (r *accountRepository) GetAccountStatusHistory(ctx context.Context, accountIDs uuid.UUID) ([]account.StatusHistory, error) {
-	return nil, nil
+func (r *accountRepository) ListAccountStatusHistory(ctx context.Context, params account.ListAccountStatusHistoryParams) ([]account.StatusHistory, error) {
+	var cursorCreatedAt pgtype.Timestamptz
+	if params.CursorCreatedAt != nil {
+		cursorCreatedAt = pgtype.Timestamptz{Time: *params.CursorCreatedAt, Valid: true}
+	}
+
+	rows, err := r.queries.ListAccountStatusHistory(ctx, sqlc.ListAccountStatusHistoryParams{
+		AccountID:       params.AccountID,
+		CursorID:        params.CursorID,
+		CursorCreatedAt: cursorCreatedAt,
+		Limit:           params.Limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	histories := make([]account.StatusHistory, len(rows))
+	for i, row := range rows {
+		histories[i] = account.StatusHistory{
+			ID:             row.ID,
+			AccountID:      row.AccountID,
+			PreviousStatus: mapStringPointerToAccountStatusPointer(row.PreviousStatus),
+			NewStatus:      account.AccountStatus(row.NewStatus),
+			Reason:         row.Reason,
+			ActorType:      account.ActorType(row.ActorType),
+			ActorID:        row.ActorID,
+			CreatedAt:      row.CreatedAt,
+		}
+	}
+
+	return histories, nil
 }
 
 // Discrepancy audit trail

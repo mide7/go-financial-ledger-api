@@ -51,3 +51,11 @@ func mapToTransactionDomain(t *sqlc.Transaction) *transaction.Transaction {
 		CreatedAt:           t.CreatedAt,
 	}
 }
+
+func mapStringPointerToAccountStatusPointer(s *string) *account.AccountStatus {
+	if s == nil {
+		return nil
+	}
+	status := account.AccountStatus(*s)
+	return &status
+}

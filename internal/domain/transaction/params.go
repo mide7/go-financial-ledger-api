@@ -4,12 +4,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mide7/go-financial-ledger-api/internal/domain"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 )
 
 type EntryParams struct {
 	AccountID uuid.UUID
-	Type      EntryType
+	Type      domain.EntryType
 	Amount    int64
 }
 
@@ -42,11 +43,11 @@ func (p CreateTransactionParams) Validate() error {
 			return ErrInvalidEntryType
 		}
 
-		if entry.Type == EntryTypeDebit {
+		if entry.Type == domain.EntryTypeDebit {
 			netBalance -= entry.Amount
 		}
 
-		if entry.Type == EntryTypeCredit {
+		if entry.Type == domain.EntryTypeCredit {
 			netBalance += entry.Amount
 		}
 

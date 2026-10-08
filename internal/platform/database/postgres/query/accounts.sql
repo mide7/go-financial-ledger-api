@@ -2,12 +2,23 @@
 INSERT INTO accounts (owner_id, type, currency)
 VALUES ($1, $2, $3)
 RETURNING *;
+-- name: UpdateAccountStatus :exec
+UPDATE accounts
+SET status = sqlc.arg('status'),
+    updated_at = NOW()
+WHERE id = sqlc.arg('account_id');
+-- name: GetAccountForUpdate :one
+SELECT id,
+    status
+FROM accounts
+WHERE id = sqlc.arg('account_id') FOR
+UPDATE;
 -- name: GetAccountByID :one
 SELECT *
 FROM accounts
 WHERE id = $1
 LIMIT 1;
--- name: GetAccountsByOwnerID :many
+-- name: ListAccountsByOwnerID :many
 SELECT *
 FROM accounts
 WHERE owner_id = sqlc.arg('owner_id');
@@ -17,6 +28,11 @@ FROM accounts
 WHERE owner_id = sqlc.arg('owner_id')
     AND type = sqlc.arg('type')
     AND currency = sqlc.arg('currency')
+LIMIT 1;
+-- name: GetAccountStatus :one
+SELECT status
+FROM accounts
+WHERE id = sqlc.arg('account_id')
 LIMIT 1;
 -- name: ListAccounts :many
 SELECT *
@@ -140,8 +156,8 @@ prior_activity AS (
     FROM entries
     WHERE account_id = sqlc.arg('account_id')
         AND (
-            sqlc.narg(start_date)::timestamptz IS NOT NULL
-            AND created_at < sqlc.narg(start_date)
+            sqlc.narg('start_date')::timestamptz IS NOT NULL
+            AND created_at < sqlc.narg('start_date')
         )
 ),
 period_activity AS (
@@ -167,11 +183,11 @@ period_activity AS (
     WHERE account_id = sqlc.arg('account_id')
         AND (
             sqlc.narg(start_date)::timestamptz IS NULL
-            OR created_at >= sqlc.narg(start_date)
+            OR created_at >= sqlc.narg('start_date')
         )
         AND (
             sqlc.narg(end_date)::timestamptz IS NULL
-            OR created_at <= sqlc.narg(end_date)
+            OR created_at <= sqlc.narg('end_date')
         )
 )
 SELECT ai.account_id,
@@ -240,7 +256,7 @@ FROM account_history
 WHERE entry_created_at >= sqlc.arg('start_date')
 ORDER BY entry_sequence DESC
 LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
--- name: GetAccountStatementEntries :many
+-- name: ListAccountStatementEntries :many
 WITH acct AS (
     SELECT a.id,
         a.currency,
@@ -252,7 +268,7 @@ WITH acct AS (
 cursor_seq AS (
     SELECT entry_sequence
     FROM entries
-    WHERE id = sqlc.narg('cursor_id')::uuid
+    WHERE id = sqlc.narg('cursor')::uuid
         AND account_id = sqlc.arg('account_id')::uuid
 ),
 page AS (
@@ -263,14 +279,14 @@ page AS (
         AND e.created_at >= sqlc.arg('start_date')::timestamptz
         AND e.created_at < sqlc.arg('end_date')::timestamptz
         AND (
-            sqlc.narg('cursor_id')::uuid IS NULL
+            sqlc.narg('cursor')::uuid IS NULL
             OR e.entry_sequence < (
                 SELECT entry_sequence
                 FROM cursor_seq
             )
         )
     ORDER BY e.entry_sequence DESC
-    LIMIT sqlc.arg('limit_count')::int
+    LIMIT sqlc.arg('limit')::int
 ), bounds AS (
     SELECT MIN(entry_sequence) AS lo,
         MAX(entry_sequence) AS hi
@@ -349,7 +365,6 @@ latest_snapshot AS (
     ORDER BY bs.last_entry_sequence DESC
     LIMIT 1
 ), ledger AS (
-    -- Single pass over entries instead of two scans
     SELECT COALESCE(
             SUM(
                 CASE
@@ -397,23 +412,3 @@ SELECT ac.account_id,
 FROM account_ctx ac
     CROSS JOIN ledger l
     LEFT JOIN latest_snapshot ls ON true;
--- TODO: Rewrite these queries to use the new account_status_history table
--- -- name: FreezeAccount :exec
--- UPDATE accounts
--- SET is_frozen = true,
---     frozen_reason = sqlc.arg('reason'),
---     frozen_at = NOW(),
---     updated_at = NOW()
--- WHERE id = sqlc.arg('account_id');
--- -- name: UnfreezeAccount :exec
--- UPDATE accounts
--- SET is_frozen = false,
---     frozen_reason = NULL,
---     frozen_at = NULL,
---     updated_at = NOW()
--- WHERE id = sqlc.arg('account_id');
--- -- name: GetFrozenAccountsInSet :many
--- SELECT id
--- FROM accounts
--- WHERE id = ANY(sqlc.arg('account_ids')::uuid [])
---     AND is_frozen = true;

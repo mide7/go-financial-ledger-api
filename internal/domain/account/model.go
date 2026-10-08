@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/mide7/go-financial-ledger-api/internal/domain"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 )
 
@@ -22,6 +23,14 @@ var (
 type AccountStatus string
 type AccountType string
 type ActorType string
+
+func (s AccountStatus) String() string {
+	return string(s)
+}
+
+func (at ActorType) String() string {
+	return string(at)
+}
 
 // Allowed Account Types
 const (
@@ -62,14 +71,14 @@ type Account struct {
 }
 
 type StatusHistory struct {
-	ID             uuid.UUID     `json:"id"`
-	AccountID      uuid.UUID     `json:"account_id"`
-	PreviousStatus AccountStatus `json:"previous_status"`
-	NewStatus      AccountStatus `json:"new_status"`
-	Reason         string        `json:"reason"`
-	ActorType      ActorType     `json:"actor_type"`
-	ActorID        string        `json:"actor_id"`
-	CreatedAt      time.Time     `json:"created_at"`
+	ID             uuid.UUID      `json:"id"`
+	AccountID      uuid.UUID      `json:"account_id"`
+	PreviousStatus *AccountStatus `json:"previous_status"`
+	NewStatus      AccountStatus  `json:"new_status"`
+	Reason         string         `json:"reason"`
+	ActorType      ActorType      `json:"actor_type"`
+	ActorID        string         `json:"actor_id"`
+	CreatedAt      time.Time      `json:"created_at"`
 }
 
 type GetAccountBalanceResult struct {
@@ -93,16 +102,16 @@ type StatementSummary struct {
 }
 
 type StatementEntry struct {
-	ID             string        `json:"id"`
-	TransactionID  uuid.UUID     `json:"transaction_id"`
-	Type           string        `json:"type"`   // "DEBIT" or "CREDIT"
-	Amount         int64         `json:"amount"` // Minor units
-	RunningBalance int64         `json:"running_balance"`
-	Currency       currency.Code `json:"currency"`
-	Exponent       int16         `json:"exponent"`
-	Description    string        `json:"description"`
-	EntrySequence  int64         `json:"entry_sequence"`
-	CreatedAt      time.Time     `json:"created_at"`
+	ID             uuid.UUID        `json:"id"`
+	TransactionID  uuid.UUID        `json:"transaction_id"`
+	Type           domain.EntryType `json:"type"`   // "DEBIT" or "CREDIT"
+	Amount         int64            `json:"amount"` // Minor units
+	RunningBalance int64            `json:"running_balance"`
+	Currency       currency.Code    `json:"currency"`
+	Exponent       int16            `json:"exponent"`
+	Description    string           `json:"description"`
+	EntrySequence  int64            `json:"entry_sequence"`
+	CreatedAt      time.Time        `json:"created_at"`
 }
 
 // ReconciliationResult detail audit output.

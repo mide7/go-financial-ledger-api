@@ -18,12 +18,16 @@ type Querier interface {
 	GetAccountBalance(ctx context.Context, accountID uuid.UUID) (GetAccountBalanceRow, error)
 	GetAccountByID(ctx context.Context, id uuid.UUID) (Account, error)
 	GetAccountByOwnerTypeCurrency(ctx context.Context, arg GetAccountByOwnerTypeCurrencyParams) (Account, error)
-	GetAccountStatementEntries(ctx context.Context, arg GetAccountStatementEntriesParams) ([]GetAccountStatementEntriesRow, error)
+	GetAccountForUpdate(ctx context.Context, accountID uuid.UUID) (GetAccountForUpdateRow, error)
 	GetAccountStatementSummary(ctx context.Context, arg GetAccountStatementSummaryParams) (GetAccountStatementSummaryRow, error)
-	GetAccountsByOwnerID(ctx context.Context, ownerID string) ([]Account, error)
+	GetAccountStatus(ctx context.Context, accountID uuid.UUID) (string, error)
 	GetLatestBalanceSnapshot(ctx context.Context, accountID uuid.UUID) (BalanceSnapshot, error)
 	InsertDiscrepancyRecord(ctx context.Context, arg InsertDiscrepancyRecordParams) (DiscrepancyRecord, error)
+	InsertStatusHistory(ctx context.Context, arg InsertStatusHistoryParams) (AccountStatusHistory, error)
+	ListAccountStatementEntries(ctx context.Context, arg ListAccountStatementEntriesParams) ([]ListAccountStatementEntriesRow, error)
+	ListAccountStatusHistory(ctx context.Context, arg ListAccountStatusHistoryParams) ([]AccountStatusHistory, error)
 	ListAccounts(ctx context.Context, arg ListAccountsParams) ([]Account, error)
+	ListAccountsByOwnerID(ctx context.Context, ownerID string) ([]Account, error)
 	ListActiveCurrencies(ctx context.Context) ([]ListActiveCurrenciesRow, error)
 	ListUnresolvedDiscrepancies(ctx context.Context) ([]DiscrepancyRecord, error)
 	ReconcileAccount(ctx context.Context, accountID uuid.UUID) (ReconcileAccountRow, error)
@@ -31,6 +35,7 @@ type Querier interface {
 	SeedAccountType(ctx context.Context, arg SeedAccountTypeParams) error
 	SeedCurrency(ctx context.Context, arg SeedCurrencyParams) error
 	SeedSystemAccount(ctx context.Context, arg SeedSystemAccountParams) error
+	UpdateAccountStatus(ctx context.Context, arg UpdateAccountStatusParams) error
 }
 
 var _ Querier = (*Queries)(nil)

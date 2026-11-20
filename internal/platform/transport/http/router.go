@@ -1,12 +1,14 @@
+// Package http wires the HTTP router, middleware and server.
 package http
 
 import (
 	"net/http"
 
-	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handlers"
+	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handler"
 )
 
-func NewRouter(h handlers.Handler, healthCheckHandler handlers.HealthCheckHandler) http.Handler {
+// NewRouter mounts the health routes at /health and the API at /api/v1.
+func NewRouter(h handler.Handler, healthCheckHandler handler.HealthCheckHandler) http.Handler {
 	router := http.NewServeMux()
 
 	healthHandler := RegisterHealthRoutes(healthCheckHandler)
@@ -18,7 +20,8 @@ func NewRouter(h handlers.Handler, healthCheckHandler handlers.HealthCheckHandle
 	return router
 }
 
-func RegisterHealthRoutes(h handlers.HealthCheckHandler) http.Handler {
+// RegisterHealthRoutes returns a mux serving the health check.
+func RegisterHealthRoutes(h handler.HealthCheckHandler) http.Handler {
 	router := http.NewServeMux()
 
 	// Health
@@ -27,7 +30,8 @@ func RegisterHealthRoutes(h handlers.HealthCheckHandler) http.Handler {
 	return router
 }
 
-func RegisterV1Routes(h handlers.Handler) http.Handler {
+// RegisterV1Routes returns a mux serving the v1 account and transaction routes.
+func RegisterV1Routes(h handler.Handler) http.Handler {
 	router := http.NewServeMux()
 
 	// Accounts

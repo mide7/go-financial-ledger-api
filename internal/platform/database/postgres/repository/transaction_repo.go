@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mide7/go-financial-ledger-api/internal/domain"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/sqlc"
 )
@@ -13,6 +14,7 @@ type transactionRepository struct {
 	queries *sqlc.Queries
 }
 
+// NewTransactionRepository returns a transaction.Repository backed by pool.
 func NewTransactionRepository(pool *pgxpool.Pool, queries *sqlc.Queries) transaction.Repository {
 	return &transactionRepository{
 		pool:    pool,
@@ -25,7 +27,7 @@ func (r *transactionRepository) Create(ctx context.Context, params transaction.C
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }() // no-op after a successful Commit
 
 	qtx := r.queries.WithTx(tx)
 
@@ -67,14 +69,14 @@ func (r *transactionRepository) Create(ctx context.Context, params transaction.C
 	return mapToTransactionDomain(&createdTransaction), nil
 }
 
-func (r *transactionRepository) GetByID(ctx context.Context, id string) (*transaction.Transaction, error) {
-	return nil, nil
+func (r *transactionRepository) GetByID(_ context.Context, _ string) (*transaction.Transaction, error) {
+	return nil, domain.ErrNotImplemented
 }
 
-func (r *transactionRepository) List(ctx context.Context, params transaction.ListTransactionsParams) ([]transaction.Transaction, error) {
-	return nil, nil
+func (r *transactionRepository) List(_ context.Context, _ transaction.ListTransactionsParams) ([]transaction.Transaction, error) {
+	return nil, domain.ErrNotImplemented
 }
 
-func (r *transactionRepository) Reverse(ctx context.Context, id string) error {
-	return nil
+func (r *transactionRepository) Reverse(_ context.Context, _ string) error {
+	return domain.ErrNotImplemented
 }

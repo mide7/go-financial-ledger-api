@@ -1,4 +1,4 @@
-package postgres
+package repository
 
 import (
 	"context"
@@ -13,18 +13,24 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/sqlc"
 )
 
+// CurrencyRegistry is an in-memory currency.Registry kept fresh by Postgres
+// LISTEN/NOTIFY on the currency_updated channel.
 type CurrencyRegistry struct {
 	mu         sync.RWMutex
 	currencies map[currency.Code]currency.Currency
 	pool       *pgxpool.Pool
 	queries    *sqlc.Queries
+	log        *slog.Logger
 }
 
-func NewCurrencyRegistry(ctx context.Context, pool *pgxpool.Pool, queries *sqlc.Queries) (*CurrencyRegistry, error) {
+// NewCurrencyRegistry loads active currencies and starts a listener goroutine
+// that runs until ctx is cancelled. Records are tagged component=currency_registry.
+func NewCurrencyRegistry(ctx context.Context, pool *pgxpool.Pool, queries *sqlc.Queries, log *slog.Logger) (*CurrencyRegistry, error) {
 	r := &CurrencyRegistry{
 		currencies: make(map[currency.Code]currency.Currency),
 		pool:       pool,
 		queries:    queries,
+		log:        log.With("component", "currency_registry"),
 	}
 
 	if err := r.Reload(ctx); err != nil {
@@ -36,13 +42,17 @@ func NewCurrencyRegistry(ctx context.Context, pool *pgxpool.Pool, queries *sqlc.
 	return r, nil
 }
 
+// Get returns the currency for code and whether it is known and active.
 func (r *CurrencyRegistry) Get(code currency.Code) (currency.Currency, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
 	curr, ok := r.currencies[code]
+
 	return curr, ok && curr.IsActive
 }
 
+// Reload replaces the cache with the currently active currencies.
 func (r *CurrencyRegistry) Reload(ctx context.Context) error {
 	dbCurrencies, err := r.queries.ListActiveCurrencies(ctx)
 	if err != nil {
@@ -64,11 +74,12 @@ func (r *CurrencyRegistry) Reload(ctx context.Context) error {
 	r.currencies = freshMap
 	r.mu.Unlock()
 
-	slog.Info("[CurrencyRegistry] In-memory cache refreshed", "count", len(freshMap))
+	r.log.InfoContext(ctx, "currency cache refreshed", "count", len(freshMap))
+
 	return nil
 }
 
-// startListener manages a dedicated connection, listening for invalidation events with automatic reconnects
+// startListener manages a dedicated connection, listening for invalidation events with automatic reconnects.
 func (r *CurrencyRegistry) startListener(ctx context.Context) {
 	for {
 		select {
@@ -77,12 +88,12 @@ func (r *CurrencyRegistry) startListener(ctx context.Context) {
 		default:
 			err := r.listenLoop(ctx)
 			if err != nil && !errors.Is(err, context.Canceled) {
-				slog.Error("[CurrencyRegistry] Connection lost. Reconnecting in 3s...", "err", err)
+				r.log.ErrorContext(ctx, "listener connection lost; reconnecting in 3s", "err", err)
 				time.Sleep(3 * time.Second)
 
 				// Re-sync cache upon reconnect to catch any updates missed during downtime
 				if syncErr := r.Reload(ctx); syncErr != nil {
-					slog.Error("[CurrencyRegistry] Cache re-sync failed after reconnect", "err", syncErr)
+					r.log.ErrorContext(ctx, "cache re-sync after reconnect failed", "err", syncErr)
 				}
 			}
 		}
@@ -110,11 +121,11 @@ func (r *CurrencyRegistry) listenLoop(ctx context.Context) error {
 			return err // Triggers outer reconnect loop
 		}
 
-		slog.Info("[CurrencyRegistry] Received notification for currency", "payload", notification.Payload)
+		r.log.InfoContext(ctx, "currency change notification received", "currency", notification.Payload)
 
 		// Refresh in-memory cache
 		if err := r.Reload(ctx); err != nil {
-			slog.Error("[CurrencyRegistry] Failed to refresh cache", "err", err)
+			r.log.ErrorContext(ctx, "currency cache refresh failed", "err", err)
 		}
 	}
 }

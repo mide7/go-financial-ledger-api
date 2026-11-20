@@ -39,3 +39,13 @@ profile.out
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# devbox
+*devbox*
+.envrc
+
+# claude
+CLAUDE.*
+.agents
+.claude
+skills-lock.json

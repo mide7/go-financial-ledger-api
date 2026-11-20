@@ -44,9 +44,11 @@ const getAccountBalance = `-- name: GetAccountBalance :one
 WITH account_info AS (
     SELECT a.id AS account_id,
         a.currency,
-        c.exponent
+        c.exponent,
+        at.normal_balance
     FROM accounts a
         JOIN currencies c ON a.currency = c.code
+        JOIN account_types at ON at.type = a.type
     WHERE a.id = $1
 ),
 latest_snapshot AS (
@@ -70,43 +72,38 @@ latest_snapshot AS (
             COALESCE(b.balance, 0) + COALESCE(
                 SUM(
                     CASE
-                        WHEN e.type = 'CREDIT' THEN e.amount
-                        WHEN e.type = 'DEBIT' THEN - e.amount
-                        ELSE 0
+                        WHEN e.type = ai.normal_balance THEN e.amount
+                        ELSE - e.amount
                     END
                 ),
                 0
             )
         )::BIGINT AS minor_units
     FROM baseline b
+        CROSS JOIN account_info ai
         LEFT JOIN entries e ON e.account_id = $1
         AND e.entry_sequence > b.last_entry_sequence
     GROUP BY b.balance
 )
 SELECT ai.currency,
     ai.exponent,
-    rb.minor_units AS balance_minor,
-    (rb.minor_units::NUMERIC / POWER(10, ai.exponent))::NUMERIC AS balance_major
+    rb.minor_units AS balance_minor
 FROM account_info ai
     CROSS JOIN raw_balance rb
 `
 
 type GetAccountBalanceRow struct {
-	Currency     string         `json:"currency"`
-	Exponent     int16          `json:"exponent"`
-	BalanceMinor int64          `json:"balance_minor"`
-	BalanceMajor pgtype.Numeric `json:"balance_major"`
+	Currency     string `json:"currency"`
+	Exponent     int16  `json:"exponent"`
+	BalanceMinor int64  `json:"balance_minor"`
 }
 
+// Balances are positive in the account's normal-balance direction
+// (account_types.normal_balance), matching snapshots and reconciliation.
 func (q *Queries) GetAccountBalance(ctx context.Context, accountID uuid.UUID) (GetAccountBalanceRow, error) {
 	row := q.db.QueryRow(ctx, getAccountBalance, accountID)
 	var i GetAccountBalanceRow
-	err := row.Scan(
-		&i.Currency,
-		&i.Exponent,
-		&i.BalanceMinor,
-		&i.BalanceMajor,
-	)
+	err := row.Scan(&i.Currency, &i.Exponent, &i.BalanceMinor)
 	return i, err
 }
 
@@ -186,26 +183,29 @@ const getAccountStatementSummary = `-- name: GetAccountStatementSummary :one
 WITH account_info AS (
     SELECT a.id AS account_id,
         a.currency,
-        c.exponent
+        c.exponent,
+        at.normal_balance
     FROM accounts a
         JOIN currencies c ON a.currency = c.code
+        JOIN account_types at ON at.type = a.type
     WHERE a.id = $1
 ),
 prior_activity AS (
     SELECT COALESCE(
             SUM(
                 CASE
-                    WHEN type = 'DEBIT' THEN amount
-                    ELSE - amount
+                    WHEN e.type = ai.normal_balance THEN e.amount
+                    ELSE - e.amount
                 END
             ),
             0
         )::BIGINT AS balance
-    FROM entries
-    WHERE account_id = $1
+    FROM entries e
+        CROSS JOIN account_info ai
+    WHERE e.account_id = $1
         AND (
             $2::timestamptz IS NOT NULL
-            AND created_at < $2
+            AND e.created_at < $2
         )
 ),
 period_activity AS (
@@ -244,7 +244,12 @@ SELECT ai.account_id,
     p.balance AS opening_balance,
     pa.total_debits,
     pa.total_credits,
-    (p.balance + pa.total_debits - pa.total_credits)::BIGINT AS closing_balance
+    (
+        p.balance + CASE
+            WHEN ai.normal_balance = 'DEBIT' THEN pa.total_debits - pa.total_credits
+            ELSE pa.total_credits - pa.total_debits
+        END
+    )::BIGINT AS closing_balance
 FROM account_info ai
     CROSS JOIN prior_activity p
     CROSS JOIN period_activity pa
@@ -266,6 +271,8 @@ type GetAccountStatementSummaryRow struct {
 	ClosingBalance int64     `json:"closing_balance"`
 }
 
+// Opening and closing balances are positive in the account's normal-balance
+// direction; total_debits and total_credits are unsigned sums.
 func (q *Queries) GetAccountStatementSummary(ctx context.Context, arg GetAccountStatementSummaryParams) (GetAccountStatementSummaryRow, error) {
 	row := q.db.QueryRow(ctx, getAccountStatementSummary, arg.AccountID, arg.StartDate, arg.EndDate)
 	var i GetAccountStatementSummaryRow

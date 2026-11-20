@@ -12,13 +12,20 @@ import (
 
 type Querier interface {
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
+	// The stored balance is positive in the account's normal-balance direction
+	// (account_types.normal_balance), so GetAccountBalance and ReconcileAccount can
+	// add later entries to it with the same sign rule.
 	CreateBalanceSnapshot(ctx context.Context, accountID uuid.UUID) (BalanceSnapshot, error)
 	CreateEntries(ctx context.Context, arg []CreateEntriesParams) (int64, error)
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
+	// Balances are positive in the account's normal-balance direction
+	// (account_types.normal_balance), matching snapshots and reconciliation.
 	GetAccountBalance(ctx context.Context, accountID uuid.UUID) (GetAccountBalanceRow, error)
 	GetAccountByID(ctx context.Context, id uuid.UUID) (Account, error)
 	GetAccountByOwnerTypeCurrency(ctx context.Context, arg GetAccountByOwnerTypeCurrencyParams) (Account, error)
 	GetAccountForUpdate(ctx context.Context, accountID uuid.UUID) (GetAccountForUpdateRow, error)
+	// Opening and closing balances are positive in the account's normal-balance
+	// direction; total_debits and total_credits are unsigned sums.
 	GetAccountStatementSummary(ctx context.Context, arg GetAccountStatementSummaryParams) (GetAccountStatementSummaryRow, error)
 	GetAccountStatus(ctx context.Context, accountID uuid.UUID) (string, error)
 	GetLatestBalanceSnapshot(ctx context.Context, accountID uuid.UUID) (BalanceSnapshot, error)

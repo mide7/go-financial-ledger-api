@@ -49,7 +49,8 @@ func TestRecovery(t *testing.T) {
 				t.Fatalf("status = %d, want %d", rec.Code, tt.wantStatus)
 			}
 
-			logged := bytes.Contains(logs.Bytes(), []byte("panic recovered")) && bytes.Contains(logs.Bytes(), []byte("boom"))
+			logged := bytes.Contains(logs.Bytes(), []byte("panic recovered")) &&
+				bytes.Contains(logs.Bytes(), []byte("boom"))
 			if logged != tt.wantLogged {
 				t.Errorf("panic logged = %v, want %v; logs: %s", logged, tt.wantLogged, logs.String())
 			}
@@ -63,7 +64,9 @@ func TestRecovery(t *testing.T) {
 				t.Fatalf("body %s is not a StandardResponse: %v", rec.Body, err)
 			}
 
-			if got.Status != http.StatusInternalServerError || got.Errors != "internal server error" || got.Data != nil {
+			if got.Status != http.StatusInternalServerError ||
+				got.Errors != "internal server error" ||
+				got.Data != nil {
 				t.Errorf("envelope = %+v", got)
 			}
 		})
@@ -76,7 +79,10 @@ func TestRecovery(t *testing.T) {
 func TestRecovery_InsideJSONResponse(t *testing.T) {
 	t.Parallel()
 
-	stack := middleware.Chain(middleware.Recovery(slog.New(slog.DiscardHandler)), middleware.JSONResponse)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	stack := middleware.Chain(
+		middleware.Recovery(slog.New(slog.DiscardHandler)),
+		middleware.JSONResponse,
+	)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"partial":true}`))
 
 		panic("boom")
@@ -86,7 +92,9 @@ func TestRecovery_InsideJSONResponse(t *testing.T) {
 	stack.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil))
 
 	var got middleware.StandardResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != http.StatusInternalServerError || got.Data != nil {
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil ||
+		rec.Code != http.StatusInternalServerError ||
+		got.Data != nil {
 		t.Errorf("got status %d body %s (err %v); want a clean 500 envelope", rec.Code, rec.Body, err)
 	}
 }

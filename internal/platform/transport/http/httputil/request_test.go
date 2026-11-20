@@ -72,7 +72,11 @@ func TestDecode(t *testing.T) {
 			name:    "query time, cursor and int",
 			target:  "/x?since=2026-01-02T03:04:05Z&cursor=" + testID + "&limit=5",
 			sources: []httputil.Source{httputil.SourceQuery},
-			want:    decodeTarget{Since: since, Cursor: uuid.NullUUID{UUID: uuid.MustParse(testID), Valid: true}, Limit: 5},
+			want: decodeTarget{
+				Since:  since,
+				Cursor: uuid.NullUUID{UUID: uuid.MustParse(testID), Valid: true},
+				Limit:  5,
+			},
 		},
 		{
 			name:    "empty cursor stays null",

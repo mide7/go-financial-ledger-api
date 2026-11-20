@@ -28,7 +28,10 @@ func NewTransactionService(repo Repository, currencyRegistry currency.Registry) 
 	}
 }
 
-func (s *transactionService) CreateTransaction(ctx context.Context, params CreateTransactionParams) (*Transaction, error) {
+func (s *transactionService) CreateTransaction(
+	ctx context.Context,
+	params CreateTransactionParams,
+) (*Transaction, error) {
 	if err := params.Validate(); err != nil {
 		return nil, err
 	}

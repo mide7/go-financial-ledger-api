@@ -45,7 +45,11 @@ var errorMappings = []errorMapping{
 	{transaction.ErrInvalidEntryType, http.StatusUnprocessableEntity, "invalid entry type"},
 	{transaction.ErrInvalidEntryAmount, http.StatusUnprocessableEntity, "entry amount must be greater than zero"},
 	{transaction.ErrInvalidAccountID, http.StatusUnprocessableEntity, "entry account ID is required"},
-	{transaction.ErrAmountOverflow, http.StatusUnprocessableEntity, "total debits or credits exceed the maximum amount"},
+	{
+		transaction.ErrAmountOverflow,
+		http.StatusUnprocessableEntity,
+		"total debits or credits exceed the maximum amount",
+	},
 
 	// Endpoints without an implementation yet
 	{domain.ErrNotImplemented, http.StatusNotImplemented, "not implemented yet"},

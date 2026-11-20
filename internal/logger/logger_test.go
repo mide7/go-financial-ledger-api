@@ -22,8 +22,20 @@ func TestDefaults(t *testing.T) {
 		wantFormat  string
 		wantOutputs []string
 	}{
-		{name: "development", env: logger.EnvDevelopment, wantLevel: "debug", wantFormat: logger.FormatText, wantOutputs: []string{"stderr"}},
-		{name: "production", env: logger.EnvProduction, wantLevel: "info", wantFormat: logger.FormatJSON, wantOutputs: []string{"stdout"}},
+		{
+			name:        "development",
+			env:         logger.EnvDevelopment,
+			wantLevel:   "debug",
+			wantFormat:  logger.FormatText,
+			wantOutputs: []string{"stderr"},
+		},
+		{
+			name:        "production",
+			env:         logger.EnvProduction,
+			wantLevel:   "info",
+			wantFormat:  logger.FormatJSON,
+			wantOutputs: []string{"stdout"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -52,7 +64,10 @@ func TestNew_InvalidOptions(t *testing.T) {
 		{name: "unknown format", opts: logger.Options{Env: logger.EnvDevelopment, Format: "xml"}},
 		{name: "unknown output", opts: logger.Options{Env: logger.EnvDevelopment, Outputs: []string{"syslog"}}},
 		{name: "file without path", opts: logger.Options{Env: logger.EnvDevelopment, Outputs: []string{"file:"}}},
-		{name: "unknown output format", opts: logger.Options{Env: logger.EnvDevelopment, Outputs: []string{"stdout@yaml"}}},
+		{
+			name: "unknown output format",
+			opts: logger.Options{Env: logger.EnvDevelopment, Outputs: []string{"stdout@yaml"}},
+		},
 	}
 
 	for _, tt := range tests {
@@ -129,7 +144,8 @@ func TestNew_FileOutputs(t *testing.T) {
 	}
 
 	textOut := readFile(t, textPath)
-	if !strings.Contains(textOut, `msg="balance discrepancy detected"`) || !strings.Contains(textOut, "service=ledger-api") {
+	if !strings.Contains(textOut, `msg="balance discrepancy detected"`) ||
+		!strings.Contains(textOut, "service=ledger-api") {
 		t.Errorf("text output = %q", textOut)
 	}
 }
@@ -139,7 +155,10 @@ func TestNew_DevelopmentAddsSource(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "dev.log")
 
-	log, closeLog, err := logger.New(logger.Options{Env: logger.EnvDevelopment, Outputs: []string{"file:" + path + "@json"}})
+	log, closeLog, err := logger.New(logger.Options{
+		Env:     logger.EnvDevelopment,
+		Outputs: []string{"file:" + path + "@json"},
+	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}

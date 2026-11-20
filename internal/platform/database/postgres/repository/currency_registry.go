@@ -25,7 +25,12 @@ type CurrencyRegistry struct {
 
 // NewCurrencyRegistry loads active currencies and starts a listener goroutine
 // that runs until ctx is cancelled. Records are tagged component=currency_registry.
-func NewCurrencyRegistry(ctx context.Context, pool *pgxpool.Pool, queries *sqlc.Queries, log *slog.Logger) (*CurrencyRegistry, error) {
+func NewCurrencyRegistry(
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	queries *sqlc.Queries,
+	log *slog.Logger,
+) (*CurrencyRegistry, error) {
 	r := &CurrencyRegistry{
 		currencies: make(map[currency.Code]currency.Currency),
 		pool:       pool,

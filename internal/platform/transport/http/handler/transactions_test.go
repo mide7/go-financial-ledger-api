@@ -22,7 +22,8 @@ func TestTransactionHandlers(t *testing.T) {
 	accountID := uuid.MustParse(testID)
 	createBody := `{"reference":"r1","type":"FUND","currency":"NGN","description":"d","metadata":"e30=",` +
 		`"transaction_date":"2026-01-02T03:04:05Z","entries":[` +
-		`{"account_id":"` + testID + `","type":"DEBIT","amount":5},{"account_id":"` + testID + `","type":"CREDIT","amount":5}]}`
+		`{"account_id":"` + testID + `","type":"DEBIT","amount":5},` +
+		`{"account_id":"` + testID + `","type":"CREDIT","amount":5}]}`
 	createParams := transaction.CreateTransactionParams{
 		Reference:       "r1",
 		Type:            "FUND",
@@ -156,7 +157,11 @@ func TestTransactionHandlers_Errors(t *testing.T) {
 				t.Parallel()
 
 				txns := &fakeTransactions{err: ec.serviceErr}
-				got := do(t, ep.endpoint(newHandler(&fakeAccounts{}, txns)), request{method: http.MethodPost, target: "/x", pathID: cmp.Or(ec.pathID, testID)})
+				got := do(
+					t,
+					ep.endpoint(newHandler(&fakeAccounts{}, txns)),
+					request{method: http.MethodPost, target: "/x", pathID: cmp.Or(ec.pathID, testID)},
+				)
 
 				assertResponse(t, got, ec.wantStatus, "")
 

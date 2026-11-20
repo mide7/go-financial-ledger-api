@@ -58,22 +58,36 @@ func (f *fakeAccounts) GetAccountBalance(_ context.Context, id uuid.UUID) (*acco
 	return b, f.record(id, b)
 }
 
-func (f *fakeAccounts) GetAccountStatementSummary(_ context.Context, p account.GetStatementSummaryParams) (*account.StatementSummary, error) {
+func (f *fakeAccounts) GetAccountStatementSummary(
+	_ context.Context,
+	p account.GetStatementSummaryParams,
+) (*account.StatementSummary, error) {
 	s := &account.StatementSummary{AccountID: p.AccountID, ClosingBalance: 7}
 	return s, f.record(p, s)
 }
 
-func (f *fakeAccounts) GetAccountStatementEntries(_ context.Context, p account.GetStatementEntriesParams) ([]account.StatementEntry, error) {
+func (f *fakeAccounts) GetAccountStatementEntries(
+	_ context.Context,
+	p account.GetStatementEntriesParams,
+) ([]account.StatementEntry, error) {
 	e := []account.StatementEntry{{ID: uuid.MustParse(testID), Amount: 3, CreatedAt: fixedTime}}
 	return e, f.record(p, e)
 }
 
 func (f *fakeAccounts) ReconcileAccount(_ context.Context, id uuid.UUID) (*account.ReconciliationResult, error) {
-	r := &account.ReconciliationResult{AccountID: id, Status: account.ReconciliationStatusReconciled, ReconciledAt: fixedTime}
+	r := &account.ReconciliationResult{
+		AccountID:    id,
+		Status:       account.ReconciliationStatusReconciled,
+		ReconciledAt: fixedTime,
+	}
+
 	return r, f.record(id, r)
 }
 
-func (f *fakeAccounts) CreateAccountSnapshot(_ context.Context, p account.CreateAccountSnapshotParams) (*account.BalanceSnapshot, error) {
+func (f *fakeAccounts) CreateAccountSnapshot(
+	_ context.Context,
+	p account.CreateAccountSnapshotParams,
+) (*account.BalanceSnapshot, error) {
 	s := &account.BalanceSnapshot{AccountID: p.ID, Balance: 9, CreatedAt: fixedTime}
 	return s, f.record(p, s)
 }
@@ -90,7 +104,10 @@ func (f *fakeTransactions) record(p, resp any) error {
 	return f.err
 }
 
-func (f *fakeTransactions) CreateTransaction(_ context.Context, p transaction.CreateTransactionParams) (*transaction.Transaction, error) {
+func (f *fakeTransactions) CreateTransaction(
+	_ context.Context,
+	p transaction.CreateTransactionParams,
+) (*transaction.Transaction, error) {
 	t := &transaction.Transaction{ID: uuid.MustParse(testID), Reference: p.Reference, CreatedAt: fixedTime}
 	return t, f.record(p, t)
 }
@@ -100,7 +117,10 @@ func (f *fakeTransactions) GetTransactionDetails(_ context.Context, id string) (
 	return t, f.record(id, t)
 }
 
-func (f *fakeTransactions) ListTransactions(_ context.Context, p transaction.ListTransactionsParams) ([]transaction.Transaction, error) {
+func (f *fakeTransactions) ListTransactions(
+	_ context.Context,
+	p transaction.ListTransactionsParams,
+) ([]transaction.Transaction, error) {
 	list := []transaction.Transaction{{ID: uuid.MustParse(testID), CreatedAt: fixedTime}}
 	return list, f.record(p, list)
 }
@@ -182,6 +202,11 @@ func errorMatrix(notFound error) []errorCase {
 	return []errorCase{
 		{name: "malformed path ID", pathID: "not-a-uuid", wantStatus: http.StatusUnprocessableEntity},
 		{name: "known domain error", serviceErr: notFound, wantStatus: http.StatusNotFound, wantCalled: true},
-		{name: "unexpected error", serviceErr: errors.New("db down"), wantStatus: http.StatusInternalServerError, wantCalled: true},
+		{
+			name:       "unexpected error",
+			serviceErr: errors.New("db down"),
+			wantStatus: http.StatusInternalServerError,
+			wantCalled: true,
+		},
 	}
 }

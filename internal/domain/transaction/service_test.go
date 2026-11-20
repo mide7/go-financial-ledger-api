@@ -44,8 +44,20 @@ func TestTransactionService_CreateTransaction(t *testing.T) {
 		wantErr error
 	}{
 		{name: "valid", params: CreateTransactionParams{Reference: "r1", Currency: currency.NGN, Entries: balanced}},
-		{name: "unbalanced", params: CreateTransactionParams{Reference: "r2", Currency: currency.NGN, Entries: []EntryParams{debit(1), credit(2)}}, wantErr: ErrUnbalancedTransaction},
-		{name: "inactive currency", params: CreateTransactionParams{Reference: "r3", Currency: currency.USD, Entries: balanced}, wantErr: ErrInvalidCurrency},
+		{
+			name: "unbalanced",
+			params: CreateTransactionParams{
+				Reference: "r2",
+				Currency:  currency.NGN,
+				Entries:   []EntryParams{debit(1), credit(2)},
+			},
+			wantErr: ErrUnbalancedTransaction,
+		},
+		{
+			name:    "inactive currency",
+			params:  CreateTransactionParams{Reference: "r3", Currency: currency.USD, Entries: balanced},
+			wantErr: ErrInvalidCurrency,
+		},
 	}
 
 	for _, tt := range tests {

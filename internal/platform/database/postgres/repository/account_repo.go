@@ -54,7 +54,10 @@ func (r *accountRepository) GetByID(ctx context.Context, id uuid.UUID) (*account
 	return mapToAccountDomain(&row), nil
 }
 
-func (r *accountRepository) GetByOwnerTypeCurrency(ctx context.Context, params account.GetAccountByOwnerTypeCurrencyParams) (*account.Account, error) {
+func (r *accountRepository) GetByOwnerTypeCurrency(
+	ctx context.Context,
+	params account.GetAccountByOwnerTypeCurrencyParams,
+) (*account.Account, error) {
 	row, err := r.queries.GetAccountByOwnerTypeCurrency(ctx, sqlc.GetAccountByOwnerTypeCurrencyParams{
 		OwnerID:  params.OwnerID,
 		Type:     params.Type,
@@ -97,7 +100,10 @@ func (r *accountRepository) List(ctx context.Context, params account.ListAccount
 }
 
 // Balance & Audit queries.
-func (r *accountRepository) GetBalance(ctx context.Context, accountID uuid.UUID) (*account.GetAccountBalanceResult, error) {
+func (r *accountRepository) GetBalance(
+	ctx context.Context,
+	accountID uuid.UUID,
+) (*account.GetAccountBalanceResult, error) {
 	balance, err := r.queries.GetAccountBalance(ctx, accountID)
 	if err != nil {
 		return nil, notFound(err, account.ErrAccountNotFound)
@@ -112,7 +118,10 @@ func (r *accountRepository) GetBalance(ctx context.Context, accountID uuid.UUID)
 	}, nil
 }
 
-func (r *accountRepository) GetStatementSummary(ctx context.Context, params account.GetStatementSummaryParams) (*account.StatementSummary, error) {
+func (r *accountRepository) GetStatementSummary(
+	ctx context.Context,
+	params account.GetStatementSummaryParams,
+) (*account.StatementSummary, error) {
 	summary, err := r.queries.GetAccountStatementSummary(ctx, sqlc.GetAccountStatementSummaryParams{
 		AccountID: params.AccountID,
 		StartDate: pgtype.Timestamptz{Time: params.StartDate, Valid: true},
@@ -135,7 +144,10 @@ func (r *accountRepository) GetStatementSummary(ctx context.Context, params acco
 	}, nil
 }
 
-func (r *accountRepository) ListStatementEntries(ctx context.Context, params account.GetStatementEntriesParams) ([]account.StatementEntry, error) {
+func (r *accountRepository) ListStatementEntries(
+	ctx context.Context,
+	params account.GetStatementEntriesParams,
+) ([]account.StatementEntry, error) {
 	rows, err := r.queries.ListAccountStatementEntries(ctx, sqlc.ListAccountStatementEntriesParams{
 		AccountID: params.AccountID,
 		StartDate: params.StartDate,
@@ -211,7 +223,10 @@ func (r *accountRepository) Reconcile(ctx context.Context, accountID uuid.UUID) 
 	}, nil
 }
 
-func (r *accountRepository) ChangeAccountStatus(ctx context.Context, params account.StatusChangeParams) (*account.StatusHistory, error) {
+func (r *accountRepository) ChangeAccountStatus(
+	ctx context.Context,
+	params account.StatusChangeParams,
+) (*account.StatusHistory, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -271,7 +286,10 @@ func (r *accountRepository) GetAccountStatus(ctx context.Context, accountID uuid
 	return account.Status(status), nil
 }
 
-func (r *accountRepository) ListAccountStatusHistory(ctx context.Context, params account.ListAccountStatusHistoryParams) ([]account.StatusHistory, error) {
+func (r *accountRepository) ListAccountStatusHistory(
+	ctx context.Context,
+	params account.ListAccountStatusHistoryParams,
+) ([]account.StatusHistory, error) {
 	var cursorCreatedAt pgtype.Timestamptz
 	if params.CursorCreatedAt != nil {
 		cursorCreatedAt = pgtype.Timestamptz{Time: *params.CursorCreatedAt, Valid: true}
@@ -304,7 +322,10 @@ func (r *accountRepository) ListAccountStatusHistory(ctx context.Context, params
 	return histories, nil
 }
 
-func (r *accountRepository) CreateDiscrepancyRecord(ctx context.Context, params account.CreateDiscrepancyRecordParams) (*account.DiscrepancyRecord, error) {
+func (r *accountRepository) CreateDiscrepancyRecord(
+	ctx context.Context,
+	params account.CreateDiscrepancyRecordParams,
+) (*account.DiscrepancyRecord, error) {
 	row, err := r.queries.InsertDiscrepancyRecord(ctx, sqlc.InsertDiscrepancyRecordParams{
 		AccountID:            params.AccountID,
 		RawLedgerSum:         params.RawLedgerSum,
@@ -345,7 +366,10 @@ func (r *accountRepository) ResolveDiscrepancy(ctx context.Context, id uuid.UUID
 // CreateBalanceSnapshot checkpoints the account's balance at its latest entry.
 // It returns account.ErrSnapshotExists when no entries were posted since the
 // previous snapshot, because (account_id, last_entry_sequence) is unique.
-func (r *accountRepository) CreateBalanceSnapshot(ctx context.Context, accountID uuid.UUID) (*account.BalanceSnapshot, error) {
+func (r *accountRepository) CreateBalanceSnapshot(
+	ctx context.Context,
+	accountID uuid.UUID,
+) (*account.BalanceSnapshot, error) {
 	row, err := r.queries.CreateBalanceSnapshot(ctx, accountID)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -358,7 +382,10 @@ func (r *accountRepository) CreateBalanceSnapshot(ctx context.Context, accountID
 	return mapToSnapshotDomain(&row), nil
 }
 
-func (r *accountRepository) GetLatestSnapshot(ctx context.Context, accountID uuid.UUID) (*account.BalanceSnapshot, error) {
+func (r *accountRepository) GetLatestSnapshot(
+	ctx context.Context,
+	accountID uuid.UUID,
+) (*account.BalanceSnapshot, error) {
 	row, err := r.queries.GetLatestBalanceSnapshot(ctx, accountID)
 	if err != nil {
 		return nil, notFound(err, account.ErrSnapshotNotFound)

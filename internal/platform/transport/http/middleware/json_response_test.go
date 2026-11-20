@@ -28,7 +28,10 @@ func serveJSON(t *testing.T, handler http.HandlerFunc) *httptest.ResponseRecorde
 	t.Helper()
 
 	rec := httptest.NewRecorder()
-	middleware.JSONResponse(handler).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil))
+	middleware.JSONResponse(handler).ServeHTTP(
+		rec,
+		httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil),
+	)
 
 	return rec
 }
@@ -58,7 +61,8 @@ func TestJSONResponse(t *testing.T) {
 				w.WriteHeader(http.StatusNotFound)
 				_, _ = w.Write([]byte(`"account not found"`))
 			},
-			wantStatus: http.StatusNotFound, wantMessage: "Not Found", wantData: jsonNull, wantErrors: `"account not found"`,
+			wantStatus: http.StatusNotFound, wantMessage: "Not Found",
+			wantData: jsonNull, wantErrors: `"account not found"`,
 		},
 		{
 			name: "custom message header replaces status text",
@@ -111,7 +115,8 @@ func TestJSONResponse(t *testing.T) {
 			if env.Status != tt.wantStatus || env.Message != tt.wantMessage ||
 				string(env.Data) != tt.wantData || string(env.Errors) != tt.wantErrors {
 				t.Errorf("envelope = status %d, message %q, data %s, errors %s; want %d, %q, %s, %s",
-					env.Status, env.Message, env.Data, env.Errors, tt.wantStatus, tt.wantMessage, tt.wantData, tt.wantErrors)
+					env.Status, env.Message, env.Data, env.Errors,
+					tt.wantStatus, tt.wantMessage, tt.wantData, tt.wantErrors)
 			}
 
 			if _, err := time.Parse(time.RFC3339, env.Timestamp); err != nil {

@@ -37,14 +37,25 @@ func TestCreateTransactionDTO_ToDomainParams(t *testing.T) {
 		wantErr    bool
 	}{
 		{name: "no parent", mutate: func(*dto.CreateTransactionDTO) {}},
-		{name: "empty parent is no parent", mutate: func(d *dto.CreateTransactionDTO) { d.ParentTransactionID = &empty }},
+		{
+			name:   "empty parent is no parent",
+			mutate: func(d *dto.CreateTransactionDTO) { d.ParentTransactionID = &empty },
+		},
 		{
 			name:       "parent is parsed",
 			mutate:     func(d *dto.CreateTransactionDTO) { d.ParentTransactionID = &parent },
 			wantParent: uuid.NullUUID{UUID: parentID, Valid: true},
 		},
-		{name: "malformed parent", mutate: func(d *dto.CreateTransactionDTO) { d.ParentTransactionID = &bad }, wantErr: true},
-		{name: "malformed entry account", mutate: func(d *dto.CreateTransactionDTO) { d.Entries[1].AccountID = bad }, wantErr: true},
+		{
+			name:    "malformed parent",
+			mutate:  func(d *dto.CreateTransactionDTO) { d.ParentTransactionID = &bad },
+			wantErr: true,
+		},
+		{
+			name:    "malformed entry account",
+			mutate:  func(d *dto.CreateTransactionDTO) { d.Entries[1].AccountID = bad },
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

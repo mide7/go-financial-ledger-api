@@ -75,7 +75,9 @@ func fromEnv() (*Config, error) {
 	}
 
 	if cfg.AppEnv != logger.EnvDevelopment && cfg.AppEnv != logger.EnvProduction {
-		return nil, fmt.Errorf("%w: APP_ENV=%q (want %s or %s)", ErrInvalidValue, cfg.AppEnv, logger.EnvDevelopment, logger.EnvProduction)
+		return nil, fmt.Errorf("%w: APP_ENV=%q (want %s or %s)",
+			ErrInvalidValue, cfg.AppEnv, logger.EnvDevelopment, logger.EnvProduction,
+		)
 	}
 
 	if cfg.DatabaseURL == "" {

@@ -14,7 +14,8 @@ import (
 
 // CreateAccountDTO is the body of POST /accounts.
 type CreateAccountDTO struct {
-	OwnerID  string `json:"owner_id" validate:"required,min=1,max=64"`
+	OwnerID string `json:"owner_id" validate:"required,min=1,max=64"`
+	// A struct tag is one string and cannot be wrapped; oneof lists the types the API can create.
 	Type     string `json:"type" validate:"required,oneof=USER_WALLET PLATFORM_ESCROW_LIABILITY PLATFORM_FEE_REVENUE MERCHANT_PAYABLE"`
 	Currency string `json:"currency" validate:"required,len=3,uppercase"`
 }
@@ -39,7 +40,8 @@ type ListAccountsDTO struct {
 	Page     int    `form:"page" validate:"omitempty,gte=1"`
 	Limit    int    `form:"limit" validate:"omitempty,gte=1,lte=100"`
 	Currency string `form:"currency" validate:"omitempty,len=3,uppercase"`
-	Type     string `form:"type" validate:"omitempty,oneof=USER_WALLET PLATFORM_ESCROW_LIABILITY PLATFORM_FEE_REVENUE MERCHANT_PAYABLE"`
+	// Same oneof list as CreateAccountDTO.Type; the tag cannot be wrapped.
+	Type string `form:"type" validate:"omitempty,oneof=USER_WALLET PLATFORM_ESCROW_LIABILITY PLATFORM_FEE_REVENUE MERCHANT_PAYABLE"`
 }
 
 // ToDomainParams converts the request to service parameters.

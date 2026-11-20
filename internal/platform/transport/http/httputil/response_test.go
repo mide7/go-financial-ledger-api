@@ -63,8 +63,12 @@ func TestJSONMsg(t *testing.T) {
 	rec := httptest.NewRecorder()
 	httputil.JSONMsg(rec, http.StatusOK, "done", true)
 
-	if rec.Code != http.StatusOK || rec.Header().Get(middleware.HeaderResponseMessage) != "done" || rec.Body.String() != "true\n" {
-		t.Errorf("got status %d, message %q, body %q", rec.Code, rec.Header().Get(middleware.HeaderResponseMessage), rec.Body)
+	if rec.Code != http.StatusOK ||
+		rec.Header().Get(middleware.HeaderResponseMessage) != "done" ||
+		rec.Body.String() != "true\n" {
+		t.Errorf("got status %d, message %q, body %q",
+			rec.Code, rec.Header().Get(middleware.HeaderResponseMessage), rec.Body,
+		)
 	}
 }
 
@@ -92,12 +96,24 @@ func TestError(t *testing.T) {
 		{transaction.ErrDuplicateReference, http.StatusUnprocessableEntity, "duplicate reference"},
 		{transaction.ErrTransactionNotFound, http.StatusNotFound, "transaction not found"},
 		{transaction.ErrInvalidCurrency, http.StatusUnprocessableEntity, "invalid currency code"},
-		{transaction.ErrAtLeastTwoEntries, http.StatusUnprocessableEntity, "transaction must contain at least two entries"},
-		{transaction.ErrUnbalancedTransaction, http.StatusUnprocessableEntity, "debits and credits must balance to zero"},
+		{
+			transaction.ErrAtLeastTwoEntries,
+			http.StatusUnprocessableEntity,
+			"transaction must contain at least two entries",
+		},
+		{
+			transaction.ErrUnbalancedTransaction,
+			http.StatusUnprocessableEntity,
+			"debits and credits must balance to zero",
+		},
 		{transaction.ErrInvalidEntryType, http.StatusUnprocessableEntity, "invalid entry type"},
 		{transaction.ErrInvalidEntryAmount, http.StatusUnprocessableEntity, "entry amount must be greater than zero"},
 		{transaction.ErrInvalidAccountID, http.StatusUnprocessableEntity, "entry account ID is required"},
-		{transaction.ErrAmountOverflow, http.StatusUnprocessableEntity, "total debits or credits exceed the maximum amount"},
+		{
+			transaction.ErrAmountOverflow,
+			http.StatusUnprocessableEntity,
+			"total debits or credits exceed the maximum amount",
+		},
 		{domain.ErrNotImplemented, http.StatusNotImplemented, "not implemented yet"},
 		{errors.New("pq: connection refused"), http.StatusInternalServerError, "an unexpected error occurred"},
 	}
@@ -158,6 +174,8 @@ func TestError_Nil(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	if returned := httputil.Error(rec, nil); returned != 0 || rec.Body.Len() != 0 || rec.Code != http.StatusOK {
-		t.Errorf("nil error returned %d and wrote status %d body %q; want 0 and nothing written", returned, rec.Code, rec.Body)
+		t.Errorf("nil error returned %d and wrote status %d body %q; want 0 and nothing written",
+			returned, rec.Code, rec.Body,
+		)
 	}
 }

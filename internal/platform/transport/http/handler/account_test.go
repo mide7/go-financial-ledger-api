@@ -82,9 +82,12 @@ func TestAccountHandlers_BodyAndQuery(t *testing.T) {
 			wantParams: created,
 		},
 		{
-			name:       "list",
-			endpoint:   list,
-			req:        request{method: http.MethodGet, target: accountsPath + "?page=2&limit=5&currency=NGN&type=USER_WALLET"},
+			name:     "list",
+			endpoint: list,
+			req: request{
+				method: http.MethodGet,
+				target: accountsPath + "?page=2&limit=5&currency=NGN&type=USER_WALLET",
+			},
 			wantStatus: http.StatusOK,
 			wantParams: account.ListAccountsParams{Page: 2, Limit: 5, Currency: ngn, Type: "USER_WALLET"},
 		},
@@ -143,9 +146,13 @@ func TestAccountHandlers_PathID(t *testing.T) {
 			wantStatus: http.StatusUnprocessableEntity,
 		},
 		{
-			name:       "statement entries",
-			endpoint:   func(h handler.Handler) http.HandlerFunc { return h.GetAccountStatementEntries },
-			req:        request{method: http.MethodGet, target: "/x?" + statementRange + "&limit=7&cursor=" + testID, pathID: testID},
+			name:     "statement entries",
+			endpoint: func(h handler.Handler) http.HandlerFunc { return h.GetAccountStatementEntries },
+			req: request{
+				method: http.MethodGet,
+				target: "/x?" + statementRange + "&limit=7&cursor=" + testID,
+				pathID: testID,
+			},
 			wantStatus: http.StatusOK,
 			wantParams: account.GetStatementEntriesParams{
 				AccountID: id,
@@ -164,9 +171,14 @@ func TestAccountHandlers_PathID(t *testing.T) {
 			wantParams:  id,
 		},
 		{
-			name:       "reconcile rejects as_of_timestamp",
-			endpoint:   reconcile,
-			req:        request{method: http.MethodPost, target: "/x", pathID: testID, body: `{"as_of_timestamp":"2026-01-01T00:00:00Z"}`},
+			name:     "reconcile rejects as_of_timestamp",
+			endpoint: reconcile,
+			req: request{
+				method: http.MethodPost,
+				target: "/x",
+				pathID: testID,
+				body:   `{"as_of_timestamp":"2026-01-01T00:00:00Z"}`,
+			},
 			wantStatus: http.StatusUnprocessableEntity,
 		},
 		{

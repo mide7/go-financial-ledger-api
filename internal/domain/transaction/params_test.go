@@ -31,11 +31,23 @@ func TestCreateTransactionParams_Validate(t *testing.T) {
 		{name: "balanced at int64 max", entries: []EntryParams{debit(math.MaxInt64), credit(math.MaxInt64)}},
 		{name: "no entries", entries: nil, wantErr: ErrAtLeastTwoEntries},
 		{name: "single entry", entries: []EntryParams{debit(100)}, wantErr: ErrAtLeastTwoEntries},
-		{name: "missing account", entries: []EntryParams{debit(100), {Type: domain.EntryTypeCredit, Amount: 100}}, wantErr: ErrInvalidAccountID},
+		{
+			name:    "missing account",
+			entries: []EntryParams{debit(100), {Type: domain.EntryTypeCredit, Amount: 100}},
+			wantErr: ErrInvalidAccountID,
+		},
 		{name: "zero amount", entries: []EntryParams{debit(0), credit(0)}, wantErr: ErrInvalidEntryAmount},
 		{name: "negative amount", entries: []EntryParams{debit(-5), credit(-5)}, wantErr: ErrInvalidEntryAmount},
-		{name: "unknown entry type", entries: []EntryParams{debit(100), {AccountID: uuid.New(), Type: "SIDEWAYS", Amount: 100}}, wantErr: ErrInvalidEntryType},
-		{name: "debits exceed credits", entries: []EntryParams{debit(101), credit(100)}, wantErr: ErrUnbalancedTransaction},
+		{
+			name:    "unknown entry type",
+			entries: []EntryParams{debit(100), {AccountID: uuid.New(), Type: "SIDEWAYS", Amount: 100}},
+			wantErr: ErrInvalidEntryType,
+		},
+		{
+			name:    "debits exceed credits",
+			entries: []EntryParams{debit(101), credit(100)},
+			wantErr: ErrUnbalancedTransaction,
+		},
 		{name: "credits only", entries: []EntryParams{credit(100), credit(100)}, wantErr: ErrUnbalancedTransaction},
 		{
 			// MaxInt64 + MaxInt64 + 2 == 2^64, which wraps to 0 in int64 arithmetic.

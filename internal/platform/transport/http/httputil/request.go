@@ -21,32 +21,8 @@ var (
 	formDecoder     = newFormDecoder()
 )
 
-// newFormDecoder returns a path/query decoder that understands the non-primitive
-// types used in DTOs. Without these, uuid.UUID is decoded as a [16]byte array
-// and every UUID string is rejected.
-func newFormDecoder() *form.Decoder {
-	d := form.NewDecoder()
-
-	d.RegisterCustomTypeFunc(func(vals []string) (any, error) {
-		return uuid.Parse(vals[0])
-	}, uuid.UUID{})
-
-	d.RegisterCustomTypeFunc(func(vals []string) (any, error) {
-		if vals[0] == "" {
-			return uuid.NullUUID{}, nil
-		}
-
-		id, err := uuid.Parse(vals[0])
-
-		return uuid.NullUUID{UUID: id, Valid: err == nil}, err
-	}, uuid.NullUUID{})
-
-	d.RegisterCustomTypeFunc(func(vals []string) (any, error) {
-		return time.Parse(time.RFC3339, vals[0])
-	}, time.Time{})
-
-	return d
-}
+// pathKeys lists the route wildcards decodePath reads; add keys as routes need them.
+var pathKeys = []string{"id"}
 
 // Source is a bit flag naming a part of the request to decode from.
 type Source uint8
@@ -91,8 +67,18 @@ func Decode(r *http.Request, v any, sources ...Source) error {
 	return nil
 }
 
-// pathKeys lists the route wildcards decodePath reads; add keys as routes need them.
-var pathKeys = []string{"id"}
+// DecodeAndValidate decodes the JSON body and immediately runs validation on it.
+func DecodeAndValidate(r *http.Request, v any, sources ...Source) error {
+	if err := Decode(r, v, sources...); err != nil {
+		return err
+	}
+
+	if err := validation.Struct(v); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 func decodePath(r *http.Request, v any) error {
 	if r.URL == nil {
@@ -118,15 +104,29 @@ func decodePath(r *http.Request, v any) error {
 	return nil
 }
 
-// DecodeAndValidate decodes the JSON body and immediately runs validation on it.
-func DecodeAndValidate(r *http.Request, v any, sources ...Source) error {
-	if err := Decode(r, v, sources...); err != nil {
-		return err
-	}
+// newFormDecoder returns a path/query decoder that understands the non-primitive
+// types used in DTOs. Without these, uuid.UUID is decoded as a [16]byte array
+// and every UUID string is rejected.
+func newFormDecoder() *form.Decoder {
+	d := form.NewDecoder()
 
-	if err := validation.Struct(v); err != nil {
-		return err
-	}
+	d.RegisterCustomTypeFunc(func(vals []string) (any, error) {
+		return uuid.Parse(vals[0])
+	}, uuid.UUID{})
 
-	return nil
+	d.RegisterCustomTypeFunc(func(vals []string) (any, error) {
+		if vals[0] == "" {
+			return uuid.NullUUID{}, nil
+		}
+
+		id, err := uuid.Parse(vals[0])
+
+		return uuid.NullUUID{UUID: id, Valid: err == nil}, err
+	}, uuid.NullUUID{})
+
+	d.RegisterCustomTypeFunc(func(vals []string) (any, error) {
+		return time.Parse(time.RFC3339, vals[0])
+	}, time.Time{})
+
+	return d
 }

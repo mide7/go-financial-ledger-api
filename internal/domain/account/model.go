@@ -23,47 +23,8 @@ var (
 	ErrSnapshotExists   = errors.New("no new entries since the last balance snapshot")
 )
 
-// Reconciliation outcomes reported in ReconciliationResult.Status.
-const (
-	ReconciliationStatusReconciled  = "RECONCILED"
-	ReconciliationStatusDiscrepancy = "DISCREPANCY_DETECTED"
-)
-
-// IsValid reports whether t is one of the Type* constants.
-func (t Type) IsValid() bool {
-	switch t {
-	case TypeUserWallet, TypeUserLocked, TypeMerchantWallet, TypeMerchantPayable, TypeMerchantReserve,
-		TypePlatformEscrowLiability, TypePlatformFeeRevenue, TypePlatformCash,
-		TypePlatformFxSuspense, TypePlatformFxGainLoss:
-		return true
-	default:
-		return false
-	}
-}
-
-// AllTypes lists every account type, in chart-of-accounts order.
-var AllTypes = []Type{
-	TypeUserWallet, TypeUserLocked, TypeMerchantWallet, TypeMerchantPayable, TypeMerchantReserve,
-	TypePlatformEscrowLiability, TypePlatformFeeRevenue, TypePlatformCash,
-	TypePlatformFxSuspense, TypePlatformFxGainLoss,
-}
-
-type (
-	// Status is an account's lifecycle state; see the Status* constants.
-	Status string
-	// Type is an account's role in the chart of accounts; see the Type* constants.
-	Type string
-	// ActorType identifies who changed an account's status; see the ActorType* constants.
-	ActorType string
-)
-
-func (s Status) String() string {
-	return string(s)
-}
-
-func (at ActorType) String() string {
-	return string(at)
-}
+// Type is an account's role in the chart of accounts; see the Type* constants.
+type Type string
 
 // Allowed Account Types.
 const (
@@ -79,6 +40,28 @@ const (
 	TypePlatformFxGainLoss      Type = "PLATFORM_FX_GAIN_LOSS"
 )
 
+// AllTypes lists every account type, in chart-of-accounts order.
+var AllTypes = []Type{
+	TypeUserWallet, TypeUserLocked, TypeMerchantWallet, TypeMerchantPayable, TypeMerchantReserve,
+	TypePlatformEscrowLiability, TypePlatformFeeRevenue, TypePlatformCash,
+	TypePlatformFxSuspense, TypePlatformFxGainLoss,
+}
+
+// IsValid reports whether t is one of the Type* constants.
+func (t Type) IsValid() bool {
+	switch t {
+	case TypeUserWallet, TypeUserLocked, TypeMerchantWallet, TypeMerchantPayable, TypeMerchantReserve,
+		TypePlatformEscrowLiability, TypePlatformFeeRevenue, TypePlatformCash,
+		TypePlatformFxSuspense, TypePlatformFxGainLoss:
+		return true
+	default:
+		return false
+	}
+}
+
+// Status is an account's lifecycle state; see the Status* constants.
+type Status string
+
 // Allowed Account Statuses.
 const (
 	StatusActive           Status = "ACTIVE"
@@ -88,10 +71,27 @@ const (
 	StatusClosed           Status = "CLOSED"
 )
 
+func (s Status) String() string {
+	return string(s)
+}
+
+// ActorType identifies who changed an account's status; see the ActorType* constants.
+type ActorType string
+
 // Allowed Actor Types.
 const (
 	ActorTypeSystem ActorType = "SYSTEM"
 	ActorTypeAdmin  ActorType = "ADMIN"
+)
+
+func (at ActorType) String() string {
+	return string(at)
+}
+
+// Reconciliation outcomes reported in ReconciliationResult.Status.
+const (
+	ReconciliationStatusReconciled  = "RECONCILED"
+	ReconciliationStatusDiscrepancy = "DISCREPANCY_DETECTED"
 )
 
 // Account is a single-currency ledger account belonging to an owner.

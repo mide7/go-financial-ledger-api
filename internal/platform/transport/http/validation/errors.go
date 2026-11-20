@@ -8,6 +8,27 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+// paramPlaceholder in a tagMessages entry is replaced with the tag's
+// parameter, e.g. the 3 in `len=3`.
+const paramPlaceholder = "{param}"
+
+var tagMessages = map[string]string{
+	"required":  "required",
+	"uuid":      "must be a valid UUID",
+	"gt":        "must be greater than {param}",
+	"gte":       "must be greater than or equal to {param}",
+	"lt":        "must be less than {param}",
+	"lte":       "must be less than or equal to {param}",
+	"len":       "must be exactly {param} characters",
+	"oneof":     "must be one of: [{param}]",
+	"min":       "must be at least {param}",
+	"max":       "must be at most {param}",
+	"uppercase": "must be uppercase",
+	"lowercase": "must be lowercase",
+	"alphanum":  "must be alphanumeric",
+	"isdefault": "is not supported yet; omit this field",
+}
+
 // FieldError is a client-facing validation failure for one field.
 type FieldError struct {
 	Field   string `json:"field"`
@@ -30,27 +51,6 @@ func FormatValidationErrors(err error) []FieldError {
 	}
 
 	return out
-}
-
-// paramPlaceholder in a tagMessages entry is replaced with the tag's
-// parameter, e.g. the 3 in `len=3`.
-const paramPlaceholder = "{param}"
-
-var tagMessages = map[string]string{
-	"required":  "required",
-	"uuid":      "must be a valid UUID",
-	"gt":        "must be greater than {param}",
-	"gte":       "must be greater than or equal to {param}",
-	"lt":        "must be less than {param}",
-	"lte":       "must be less than or equal to {param}",
-	"len":       "must be exactly {param} characters",
-	"oneof":     "must be one of: [{param}]",
-	"min":       "must be at least {param}",
-	"max":       "must be at most {param}",
-	"uppercase": "must be uppercase",
-	"lowercase": "must be lowercase",
-	"alphanum":  "must be alphanumeric",
-	"isdefault": "is not supported yet; omit this field",
 }
 
 func msgForTag(fe validator.FieldError) string {

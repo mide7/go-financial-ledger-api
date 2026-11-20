@@ -3,8 +3,6 @@ package repository
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -184,10 +182,8 @@ func (r *accountRepository) Reconcile(ctx context.Context, accountID uuid.UUID) 
 	qtx := r.queries.WithTx(tx)
 
 	lockedAccount, err := qtx.GetAccountForUpdate(ctx, accountID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, account.ErrAccountNotFound
-	} else if err != nil {
-		return nil, err
+	if err != nil {
+		return nil, notFound(err, account.ErrAccountNotFound)
 	}
 
 	result, err := qtx.ReconcileAccount(ctx, lockedAccount.ID)
@@ -225,10 +221,8 @@ func (r *accountRepository) ChangeAccountStatus(ctx context.Context, params acco
 	qtx := r.queries.WithTx(tx)
 
 	lockedAccount, err := qtx.GetAccountForUpdate(ctx, params.AccountID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, account.ErrAccountNotFound
-	} else if err != nil {
-		return nil, err
+	if err != nil {
+		return nil, notFound(err, account.ErrAccountNotFound)
 	}
 
 	if params.ExpectedStatus != nil && *params.ExpectedStatus != account.Status(lockedAccount.Status) {

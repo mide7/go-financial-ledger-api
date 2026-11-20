@@ -3,6 +3,7 @@ package middleware
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -25,7 +26,6 @@ func JSONResponse(next http.Handler) http.Handler {
 			ResponseWriter: w,
 			statusCode:     http.StatusOK,
 			body:           bytes.NewBuffer(nil),
-			wroteHeader:    false,
 		}
 
 		next.ServeHTTP(wrapped, r)
@@ -36,45 +36,36 @@ func JSONResponse(next http.Handler) http.Handler {
 			}
 		}
 
-		if skip, ok := r.Context().Value(SkipJSONResponse).(bool); ok && skip {
+		if skip, _ := r.Context().Value(SkipJSONResponse).(bool); skip {
 			w.WriteHeader(wrapped.statusCode)
 			_, _ = w.Write(wrapped.body.Bytes()) // client may have gone away; nothing useful to do
 
 			return
 		}
 
-		message := wrapped.Header().Get(HeaderResponseMessage)
+		message := cmp.Or(wrapped.Header().Get(HeaderResponseMessage), http.StatusText(wrapped.statusCode))
 		w.Header().Del(HeaderResponseMessage)
 
-		if message == "" {
-			message = http.StatusText(wrapped.statusCode)
-		}
+		var payload any
 
-		var parsedPayload any
-
-		innerBody := bytes.TrimSpace(wrapped.body.Bytes())
-
-		if len(innerBody) > 0 {
-			if json.Valid(innerBody) {
-				parsedPayload = json.RawMessage(innerBody)
-			} else {
-				parsedPayload = string(innerBody)
-			}
-		}
-
-		var data, errs any
-		if wrapped.statusCode >= 400 {
-			errs = parsedPayload
-		} else {
-			data = parsedPayload
+		switch body := bytes.TrimSpace(wrapped.body.Bytes()); {
+		case len(body) == 0:
+		case json.Valid(body):
+			payload = json.RawMessage(body)
+		default:
+			payload = string(body)
 		}
 
 		response := StandardResponse{
 			Status:    wrapped.statusCode,
 			Message:   message,
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
-			Data:      data,
-			Errors:    errs,
+		}
+
+		if wrapped.statusCode >= http.StatusBadRequest {
+			response.Errors = payload
+		} else {
+			response.Data = payload
 		}
 
 		w.Header().Set("Content-Type", "application/json")

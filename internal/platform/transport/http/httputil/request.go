@@ -81,7 +81,8 @@ func Decode(r *http.Request, v any, sources ...Source) error {
 		}
 	}
 
-	if combinedSources&SourceBody != 0 && r.Body != nil && r.ContentLength > 0 {
+	hasBody := r.Body != nil && r.ContentLength > 0
+	if combinedSources&SourceBody != 0 && hasBody {
 		if err := json.NewDecoder(r.Body).Decode(v); err != nil {
 			return fmt.Errorf("%w: %w", ErrInvalidJSON, err)
 		}

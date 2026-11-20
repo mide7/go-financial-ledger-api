@@ -33,17 +33,11 @@ func (s *transactionService) CreateTransaction(ctx context.Context, params Creat
 		return nil, err
 	}
 
-	_, active := s.currencyRegistry.Get(params.Currency)
-	if !active {
+	if _, active := s.currencyRegistry.Get(params.Currency); !active {
 		return nil, ErrInvalidCurrency
 	}
 
-	createdTx, err := s.repo.Create(ctx, params)
-	if err != nil {
-		return nil, err
-	}
-
-	return createdTx, nil
+	return s.repo.Create(ctx, params)
 }
 
 func (s *transactionService) GetTransactionDetails(_ context.Context, _ string) (*Transaction, error) {

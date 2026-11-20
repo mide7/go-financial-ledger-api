@@ -31,7 +31,6 @@ type Handler interface {
 
 // HealthCheckHandler serves the /health route.
 type HealthCheckHandler interface {
-	// Health
 	HealthCheck(w http.ResponseWriter, r *http.Request)
 }
 

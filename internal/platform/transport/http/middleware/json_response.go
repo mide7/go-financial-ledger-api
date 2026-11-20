@@ -21,25 +21,21 @@ type StandardResponse struct {
 // Bodies with a status of 400 or above go in Errors, others in Data.
 func JSONResponse(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Initialize the wrapped writer with a live buffer
 		wrapped := &wrappedWriter{
 			ResponseWriter: w,
-			statusCode:     http.StatusOK, // Default status
+			statusCode:     http.StatusOK,
 			body:           bytes.NewBuffer(nil),
 			wroteHeader:    false,
 		}
 
-		// Pass the wrapped writer down the chain
 		next.ServeHTTP(wrapped, r)
 
-		// Copy headers set by downstream handlers to the underlying ResponseWriter
 		for key, vals := range wrapped.Header() {
 			for _, val := range vals {
 				w.Header().Add(key, val)
 			}
 		}
 
-		// If handler opted out, flush the buffer as-is and return
 		if skip, ok := r.Context().Value(SkipJSONResponse).(bool); ok && skip {
 			w.WriteHeader(wrapped.statusCode)
 			_, _ = w.Write(wrapped.body.Bytes()) // client may have gone away; nothing useful to do
@@ -47,7 +43,6 @@ func JSONResponse(next http.Handler) http.Handler {
 			return
 		}
 
-		// Extract custom message if set by handler, otherwise default to http.StatusText
 		message := wrapped.Header().Get(HeaderResponseMessage)
 		w.Header().Del(HeaderResponseMessage)
 
@@ -55,22 +50,18 @@ func JSONResponse(next http.Handler) http.Handler {
 			message = http.StatusText(wrapped.statusCode)
 		}
 
-		// Safely process inner body without double-encoding
 		var parsedPayload any
 
 		innerBody := bytes.TrimSpace(wrapped.body.Bytes())
 
 		if len(innerBody) > 0 {
 			if json.Valid(innerBody) {
-				// Keeps inner JSON structure (objects, arrays, strings) intact
 				parsedPayload = json.RawMessage(innerBody)
 			} else {
-				// Fallback for plain-text response bodies
 				parsedPayload = string(innerBody)
 			}
 		}
 
-		// 3. Assign payload to Data (2xx/3xx) or Errors (4xx/5xx)
 		var data, errs any
 		if wrapped.statusCode >= 400 {
 			errs = parsedPayload
@@ -78,7 +69,6 @@ func JSONResponse(next http.Handler) http.Handler {
 			data = parsedPayload
 		}
 
-		// Build your unified structure
 		response := StandardResponse{
 			Status:    wrapped.statusCode,
 			Message:   message,

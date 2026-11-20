@@ -105,8 +105,7 @@ func (r *accountRepository) GetBalance(ctx context.Context, accountID uuid.UUID)
 		return nil, notFound(err, account.ErrAccountNotFound)
 	}
 
-	// The query's balance_major goes through POWER(), i.e. double precision, so the
-	// decimal string is built from the exact minor units instead.
+	// Formatted in Go from exact minor units; dividing in SQL goes through floating point.
 	return &account.GetAccountBalanceResult{
 		Currency:     balance.Currency,
 		Exponent:     balance.Exponent,
@@ -216,7 +215,6 @@ func (r *accountRepository) Reconcile(ctx context.Context, accountID uuid.UUID) 
 	}, nil
 }
 
-// Status management.
 func (r *accountRepository) ChangeAccountStatus(ctx context.Context, params account.StatusChangeParams) (*account.StatusHistory, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -312,7 +310,6 @@ func (r *accountRepository) ListAccountStatusHistory(ctx context.Context, params
 	return histories, nil
 }
 
-// Discrepancy audit trail.
 func (r *accountRepository) CreateDiscrepancyRecord(ctx context.Context, params account.CreateDiscrepancyRecordParams) (*account.DiscrepancyRecord, error) {
 	row, err := r.queries.InsertDiscrepancyRecord(ctx, sqlc.InsertDiscrepancyRecordParams{
 		AccountID:            params.AccountID,

@@ -95,13 +95,11 @@ func run(cmd string, cfg *config.Config, log *slog.Logger) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// 2. Connect pool
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("pgxpool connection failed: %w", err)
 	}
 
-	// 3. Wrap pool in *sql.DB standard interface
 	db := stdlib.OpenDBFromPool(pool)
 	defer func() {
 		if err := db.Close(); err != nil {
@@ -109,7 +107,6 @@ func run(cmd string, cfg *config.Config, log *slog.Logger) error {
 		}
 	}()
 
-	// 4. Initialize migration driver
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
 		return fmt.Errorf("failed to create postgres driver instance: %w", err)
@@ -127,7 +124,6 @@ func run(cmd string, cfg *config.Config, log *slog.Logger) error {
 		}
 	}()
 
-	// 5. Execute command
 	return execute(m, cmd, log)
 }
 

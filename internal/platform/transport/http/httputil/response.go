@@ -42,7 +42,6 @@ func Error(w http.ResponseWriter, err error) int {
 		return 0
 	}
 
-	// Handle go-playground/validator errors
 	if ve, ok := errors.AsType[goValidator.ValidationErrors](err); ok {
 		JSON(w, http.StatusUnprocessableEntity, validation.FormatValidationErrors(ve))
 

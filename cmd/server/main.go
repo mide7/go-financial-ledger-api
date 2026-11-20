@@ -68,7 +68,6 @@ func run(cfg *config.Config, log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// 1. Initialize DB Pool
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("failed to create connection pool: %w", err)
@@ -82,7 +81,6 @@ func run(cfg *config.Config, log *slog.Logger) error {
 
 	log.Info("✅ database connected")
 
-	// 2. Build Dependency Tree
 	queries := sqlc.New(pool)
 
 	currencyRegistry, err := repository.NewCurrencyRegistry(ctx, pool, queries, log)
@@ -102,7 +100,6 @@ func run(cfg *config.Config, log *slog.Logger) error {
 	router := httptransport.NewRouter(apiHandler, healthCheckHandler)
 	httpServer := httptransport.NewServer(cfg.Port, router, log)
 
-	// 3. Start Server with Error Channel
 	serverErr := make(chan error, 1)
 
 	go func() {
@@ -111,7 +108,6 @@ func run(cfg *config.Config, log *slog.Logger) error {
 		}
 	}()
 
-	// 4. Wait for OS Signal or Startup Failure
 	select {
 	case err := <-serverErr:
 		return fmt.Errorf("HTTP server startup failed: %w", err)
@@ -119,7 +115,6 @@ func run(cfg *config.Config, log *slog.Logger) error {
 		log.Info("⏳ OS signal received, initiating graceful shutdown")
 	}
 
-	// 5. Graceful Shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

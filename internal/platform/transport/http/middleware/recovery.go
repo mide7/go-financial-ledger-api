@@ -20,7 +20,6 @@ func recoverer(next http.Handler, log *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				// Capture stack trace for debugging
 				stack := debug.Stack()
 
 				log.ErrorContext(r.Context(), "panic recovered in request handler",
@@ -30,14 +29,12 @@ func recoverer(next http.Handler, log *slog.Logger) http.Handler {
 					"stack", string(stack),
 				)
 
-				// Guard against headers already being written
 				if w.Header().Get("Content-Type") == "" {
 					w.Header().Set("Content-Type", "application/json")
 				}
 
 				w.WriteHeader(http.StatusInternalServerError)
 
-				// Match your StandardResponse structure for consistency
 				response := StandardResponse{
 					Status:    http.StatusInternalServerError,
 					Message:   http.StatusText(http.StatusInternalServerError),

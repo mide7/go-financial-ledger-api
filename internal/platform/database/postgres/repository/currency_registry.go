@@ -101,29 +101,26 @@ func (r *CurrencyRegistry) startListener(ctx context.Context) {
 }
 
 func (r *CurrencyRegistry) listenLoop(ctx context.Context) error {
-	// Acquire a dedicated connection from the pool (LISTEN requires a persistent connection session)
+	// LISTEN is per session, so the loop holds one pool connection for its lifetime.
 	conn, err := r.pool.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to acquire listener connection: %w", err)
 	}
 	defer conn.Release()
 
-	// Execute LISTEN command on channel 'currency_updated'
 	_, err = conn.Exec(ctx, "LISTEN currency_updated")
 	if err != nil {
 		return fmt.Errorf("executing LISTEN failed: %w", err)
 	}
 
 	for {
-		// Blocks until a notification arrives or context is cancelled
 		notification, err := conn.Conn().WaitForNotification(ctx)
 		if err != nil {
-			return err // Triggers outer reconnect loop
+			return err // startListener reconnects
 		}
 
 		r.log.InfoContext(ctx, "currency change notification received", "currency", notification.Payload)
 
-		// Refresh in-memory cache
 		if err := r.Reload(ctx); err != nil {
 			r.log.ErrorContext(ctx, "currency cache refresh failed", "err", err)
 		}

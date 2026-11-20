@@ -58,9 +58,8 @@ const (
 	SourcePath
 )
 
-// Decode parses the request body into v.
+// Decode fills v from the given request sources, or from the JSON body when none are given.
 func Decode(r *http.Request, v any, sources ...Source) error {
-	// if no sources are specified, default to body
 	if len(sources) == 0 {
 		sources = []Source{SourceBody}
 	}
@@ -70,21 +69,18 @@ func Decode(r *http.Request, v any, sources ...Source) error {
 		combinedSources |= s
 	}
 
-	// 1. Decode Path parameters
 	if combinedSources&SourcePath != 0 {
 		if err := decodePath(r, v); err != nil {
 			return err
 		}
 	}
 
-	// 2. Decode Query parameters
 	if combinedSources&SourceQuery != 0 {
 		if err := formDecoder.Decode(v, r.URL.Query()); err != nil {
 			return fmt.Errorf("%w: %w", ErrInvalidQuery, err)
 		}
 	}
 
-	// 3. Decode JSON Body
 	if combinedSources&SourceBody != 0 && r.Body != nil && r.ContentLength > 0 {
 		if err := json.NewDecoder(r.Body).Decode(v); err != nil {
 			return fmt.Errorf("%w: %w", ErrInvalidJSON, err)

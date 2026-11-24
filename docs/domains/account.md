@@ -50,7 +50,7 @@ funding a wallet with ₦100 is *debit `PLATFORM_CASH` 10000 / credit
 Only `USER_WALLET`, `PLATFORM_ESCROW_LIABILITY`, `PLATFORM_FEE_REVENUE` and
 `MERCHANT_PAYABLE` can be created through the API (the `oneof` rule in
 [dto/account.go](../../internal/platform/transport/http/dto/account.go)). The
-seeder creates one system account of every type.
+seeder creates a system account of every type in each seeded currency (USD, EUR, NGN).
 
 When adding a type: add the constant, add it to `AllTypes` and `IsValid`, seed
 the `account_types` row, and update `TestAllTypes`.
@@ -59,13 +59,28 @@ the `account_types` row, and update `TestAllTypes`.
 
 The `account_status` SQL domain allows:
 
-| Status | Meaning |
-|---|---|
-| `ACTIVE` | Can receive and send funds (default) |
-| `FULLY_FROZEN` | Can neither receive nor send |
-| `DEBIT_RESTRICTED` | Can receive, cannot send |
-| `CREDIT_RESTRICTED` | Can send, cannot receive |
-| `CLOSED` | Permanently closed |
+Statuses are enforced when posting, in **ledger terms** (entry types, not
+"send" and "receive", which would mean opposite things for credit-normal and
+debit-normal accounts):
+
+| Status | New entries allowed | Reversal entries | Can change status |
+|---|---|---|---|
+| `ACTIVE` (default) | DEBIT and CREDIT | Yes | Yes |
+| `DEBIT_RESTRICTED` | CREDIT only | Yes | Yes |
+| `CREDIT_RESTRICTED` | DEBIT only | Yes | Yes |
+| `FULLY_FROZEN` | None | Yes | Yes |
+| `CLOSED` | None | No | **No**: closing is final |
+
+For a credit-normal `USER_WALLET`, `DEBIT_RESTRICTED` means it can receive
+funds but not send them. For a debit-normal account it's the other way round.
+
+The rules live on `Status`: `AllowsEntry(domain.EntryType)`, `AllowsReversal()`
+and `CheckTransition(next)`. Reversals skip restrictions and freezes because
+they correct an earlier posting (undoing a fraudulent credit to a frozen
+wallet, say). When posting, the transaction repository share-locks the entry
+accounts (`FOR SHARE`, in id order) and checks each entry before inserting.
+A status change takes `FOR UPDATE` on the account, so it waits for in-flight
+postings to commit and can't slip in between the check and the insert.
 
 Every change is meant to be recorded in `account_status_history`, which is
 immutable:
@@ -78,15 +93,15 @@ immutable:
 `ChangeAccountStatus` validates the new status, the optional `ExpectedStatus`
 and the actor type. The repository then locks the account row
 (`SELECT … FOR UPDATE`), and returns `ErrStatusConflict` if the account has left
-`ExpectedStatus`. Finally it updates the account and inserts the history row,
+`ExpectedStatus`, then applies `CheckTransition`: `ErrAccountClosed` out of
+`CLOSED`, `ErrStatusUnchanged` for a change to the current status. Finally it updates the account and inserts the history row,
 including the previous status, in one transaction.
 
 `ListAccountStatusHistory` pages newest first on `(created_at, id)`. The cursor
 is both values from the last row of the previous page.
 
 The API records every caller as an `ADMIN` actor, with a self-reported
-`actor_id`. **Statuses are not enforced when posting yet.** See
-[Known issues](../known-issues.md).
+`actor_id`. See [Known issues](../known-issues.md).
 
 ## Service
 
@@ -107,6 +122,7 @@ The API records every caller as an `ADMIN` actor, with a self-reported
 | `ListAccountStatusHistory` | Limit defaults and caps as above |
 | `ListUnresolvedDiscrepancies` | Newest first, unpaginated |
 | `ResolveDiscrepancy` | `ErrDiscrepancyNotFound` if unknown or already resolved |
+| `ReconcileAllAccounts` | Scaffolded, 501 ([later-reconcile-all](../todo.md#later-scaffolded-routes)). Will page through the repository's `ListAccountIDs` and reconcile each account, returning a `ReconciliationRun` |
 
 ## Balance snapshots
 
@@ -152,7 +168,8 @@ notes (`resolved_at`, `resolution_notes`). These aren't exposed through the API 
 ## Statements
 
 - **Summary:** opening balance (entries before `start_date`), unsigned period
-  debit and credit totals, and closing balance. The period's end is inclusive.
+  debit and credit totals, and closing balance. The period is half-open
+  (`start ≤ created_at < end`), like the entries.
 - **Entries:** cursor-paginated lines, newest first, each with the
   `running_balance` after it. The end of the window is exclusive. The running
   balance starts from the nearest snapshot before the page, so a page costs about
@@ -171,3 +188,4 @@ notes (`resolved_at`, `resolution_notes`). These aren't exposed through the API 
 | `ErrInvalidStatus`, `ErrInvalidActorType` | 422 |
 | `ErrStatusConflict` | 409 |
 | `ErrDiscrepancyNotFound` | 404 |
+| `ErrStatusUnchanged`, `ErrAccountClosed` | 409 |

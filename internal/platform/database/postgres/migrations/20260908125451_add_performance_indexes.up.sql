@@ -7,6 +7,9 @@ CREATE INDEX IF NOT EXISTS idx_entries_account_sequence_type_amount ON entries(a
 CREATE INDEX IF NOT EXISTS idx_transactions_currency_created_at ON transactions(currency, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_transactions_parent_id ON transactions(parent_transaction_id)
 WHERE parent_transaction_id IS NOT NULL;
+-- A transaction can be reversed at most once; also stops two concurrent reversals.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_one_reversal ON transactions(parent_transaction_id)
+WHERE type = 'REVERSAL';
 CREATE INDEX IF NOT EXISTS idx_transactions_metadata ON transactions USING gin (metadata);
 -- Operational & Cleanup Indexes
 CREATE INDEX IF NOT EXISTS idx_idempotency_expires_at ON idempotency_records(expires_at);

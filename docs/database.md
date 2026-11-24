@@ -28,7 +28,7 @@ erDiagram
 | `account_status_history` | Status change audit | actor ∈ SYSTEM/ADMIN; previous ≠ new; one `NULL` previous per account |
 | `balance_snapshots` | Balance checkpoints | **unique (account_id, last_entry_sequence)** |
 | `discrepancy_records` | Failed reconciliations | `resolved_at`/`resolution_notes` nullable until resolved |
-| `idempotency_records` | Request idempotency (planned) | Table exists; no queries or code use it yet |
+| `idempotency_records` | [`Idempotency-Key`](api.md#idempotency-key-header) records: request fingerprint, status (`IN_PROGRESS`, `COMPLETED`, `FAILED`), saved response (JSONB: `{message, body}`) and expiry | Used by `repository.NewIdempotencyStore`. Claims are single statements (`INSERT … ON CONFLICT DO NOTHING`, then `ReclaimIdempotencyRecord` for an expired key or a FAILED one with the same fingerprint), so concurrent claims can't both win. Expired rows are deleted hourly |
 
 Every foreign key is `ON DELETE RESTRICT`. Types: the `entry_type` enum is
 `DEBIT` or `CREDIT`, and `account_status` is a `VARCHAR(32)` domain with a CHECK
@@ -41,7 +41,7 @@ on its five values.
 | `trg_enforce_entries_immutability` | `entries` UPDATE/DELETE | Raises an exception |
 | `trg_enforce_transactions_immutability` | `transactions` UPDATE/DELETE | Raises an exception |
 | `trg_enforce_account_status_history_immutability` | `account_status_history` UPDATE/DELETE | Raises an exception |
-| `trg_check_transaction_integrity` | `entries` INSERT (per statement) | Rejects entries whose account currency ≠ transaction currency, or any transaction whose entries don't sum to zero |
+| `trg_check_transaction_integrity` | `entries` INSERT (per statement) | Rejects entries whose account currency ≠ transaction currency (SQLSTATE `LD001`), or any transaction whose entries don't sum to zero (`LD002`). The repository maps both codes to 422 errors; keep them in step with `repository/errors.go` |
 | `trg_currency_updated` | `currencies` INSERT/UPDATE/DELETE | `pg_notify('currency_updated', code)` for the [registry](domains/currency.md#registry) |
 
 Because of immutability, test data and mistakes stay in the database. Use a
@@ -55,6 +55,9 @@ Beyond primary keys and unique constraints:
   balance and statement sums; also on `account_id` and `transaction_id`.
 - `transactions (currency, created_at DESC)`, `parent_transaction_id` (partial),
   `metadata` (GIN).
+- `uq_transactions_one_reversal`: **unique** `transactions (parent_transaction_id) WHERE type = 'REVERSAL'`,
+  so a transaction has at most one reversal. The repository matches its name to return `ErrAlreadyReversed`;
+  renaming it means updating `uniqueOneReversal` in `repository/errors.go`.
 - `balance_snapshots (account_id, last_entry_sequence DESC)`: latest snapshot lookup.
 - `idempotency_records (expires_at)` and a partial index on `IN_PROGRESS`.
 
@@ -113,6 +116,17 @@ Type mapping (`sqlc.yaml`): `uuid` becomes `uuid.UUID`, nullable `uuid` becomes
 `uuid.NullUUID`, `timestamptz` becomes `time.Time`, `account_status` becomes `string`
 (`*string` if nullable). Other nullable columns use `pgtype.*`. Keep those types
 in the repository layer, out of domain structs.
+
+### Scaffolded queries
+
+Generated but not yet called by a repository. Each belongs to a [todo.md](todo.md) item.
+
+| Query | File | Item |
+|---|---|---|
+| `ListAccountIDsAfter` | `query/accounts.sql` | later-reconcile-all |
+
+There are no withdrawal queries: the `withdrawals` table is still commented
+out in the core migration, and sqlc validates every query against the schema.
 
 ## Repository conventions
 

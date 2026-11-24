@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
+	"github.com/mide7/go-financial-ledger-api/internal/domain"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 )
 
@@ -34,6 +35,7 @@ type Service interface {
 	ListAccountStatusHistory(ctx context.Context, params ListAccountStatusHistoryParams) ([]StatusHistory, error)
 	ListUnresolvedDiscrepancies(ctx context.Context) ([]DiscrepancyRecord, error)
 	ResolveDiscrepancy(ctx context.Context, id uuid.UUID, notes string) error
+	ReconcileAllAccounts(ctx context.Context) (*ReconciliationRun, error)
 }
 
 type accountService struct {
@@ -210,6 +212,15 @@ func (s *accountService) ResolveDiscrepancy(ctx context.Context, id uuid.UUID, n
 	s.log.InfoContext(ctx, "discrepancy resolved", "discrepancy_id", id)
 
 	return nil
+}
+
+// ReconcileAllAccounts reconciles every account in pages of ids, recording
+// discrepancies as ReconcileAccount does.
+//
+// TODO(later-reconcile-all): page through s.repo.ListAccountIDs and call
+// s.ReconcileAccount for each; see docs/todo.md.
+func (s *accountService) ReconcileAllAccounts(_ context.Context) (*ReconciliationRun, error) {
+	return nil, domain.ErrNotImplemented
 }
 
 func clampLimit[T int | int32](limit T) T {

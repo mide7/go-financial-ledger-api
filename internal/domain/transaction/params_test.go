@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	"encoding/json"
 	"errors"
 	"math"
 	"math/big"
@@ -112,4 +113,41 @@ func FuzzCreateTransactionParams_Validate(f *testing.F) {
 			t.Fatalf("Validate() error = %v; debits %s, credits %s, want valid=%v", err, debits, credits, wantValid)
 		}
 	})
+}
+
+func TestCreateTransactionParams_ValidateMetadata(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		metadata string
+		wantErr  error
+		wantSave string
+	}{
+		{name: "omitted", metadata: "", wantSave: "{}"},
+		{name: "null", metadata: "null", wantSave: "{}"},
+		{name: "object", metadata: `{"order":7}`, wantSave: `{"order":7}`},
+		{name: "padded object", metadata: ` {"a":1} `, wantSave: `{"a":1}`},
+		{name: "array", metadata: `[1,2]`, wantErr: ErrInvalidMetadata},
+		{name: "string", metadata: `"e30="`, wantErr: ErrInvalidMetadata},
+		{name: "number", metadata: `42`, wantErr: ErrInvalidMetadata},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := CreateTransactionParams{Metadata: json.RawMessage(tt.metadata), Entries: []EntryParams{debit(1), credit(1)}}
+
+			if err := p.Validate(); !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Validate() error = %v, want %v", err, tt.wantErr)
+			}
+
+			if tt.wantErr == nil {
+				if got := string(p.metadataOrEmpty()); got != tt.wantSave {
+					t.Errorf("metadataOrEmpty() = %s, want %s", got, tt.wantSave)
+				}
+			}
+		})
+	}
 }

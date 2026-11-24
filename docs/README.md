@@ -12,6 +12,8 @@ entries, and can checkpoint and reconcile balances to detect corruption.
 | [Database](database.md) | Schema, triggers, indexes, sign convention, migrations, sqlc |
 | [Testing](testing.md) | Unit, integration and fuzz tests; how to run them |
 | [Known issues](known-issues.md) | Gaps and bugs not yet fixed |
+| [TODO](todo.md) | Planned work, one item per route or fix, with what's scaffolded |
+| [Contributing](contributing.md) | The documentation rule and pre-commit checks |
 
 ## Domains
 
@@ -20,6 +22,7 @@ entries, and can checkpoint and reconcile balances to detect corruption.
 | [Account](domains/account.md) | `internal/domain/account` | Accounts, balances, statements, snapshots, reconciliation, status |
 | [Transaction](domains/transaction.md) | `internal/domain/transaction` | Posting balanced double-entry transactions |
 | [Currency](domains/currency.md) | `internal/domain/currency` | Currency codes, minor units, the live currency registry |
+| [Withdrawal](domains/withdrawal.md) | `internal/domain/withdrawal` | Payouts to external processors (scaffolded only) |
 | [Shared kernel](domains/shared.md) | `internal/domain`, `internal/pagination` | Entry types, `ErrNotImplemented`, pagination envelopes |
 
 ## Core ideas in one minute
@@ -41,7 +44,18 @@ entries, and can checkpoint and reconcile balances to detect corruption.
 
 ## Status
 
-The project is in active development. Accounts, balances, statements,
-snapshots, reconciliation and transaction creation work end to end.
-Transaction lookup, listing and reversal return `501 Not Implemented`. See
-[Known issues](known-issues.md).
+The project is in active development (as of 2026-11-24).
+
+- **Working end to end:**
+  - accounts, including lookup by owner;
+  - balances, statements and snapshots;
+  - per-account reconciliation;
+  - account status changes and history, with statuses enforced when posting;
+  - discrepancy listing and resolution;
+  - the currency list;
+  - transaction creation, lookup, listing and reversal.
+  - `Idempotency-Key` retries on the money-moving POST routes.
+- **Scaffolded, returning `501 Not Implemented`:** currency conversion; reconciling every account; withdrawals.
+  [TODO](todo.md) tracks each of these.
+
+[Known issues](known-issues.md) lists current bugs and limitations.

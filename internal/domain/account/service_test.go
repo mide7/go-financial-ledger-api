@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mide7/go-financial-ledger-api/internal/domain"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 )
 
@@ -441,5 +442,13 @@ func TestAccountService_ListAccountStatusHistory(t *testing.T) {
 				t.Errorf("limit = %d, want %d", repo.historyParams.Limit, tt.wantLimit)
 			}
 		})
+	}
+}
+
+func TestAccountService_ReconcileAllAccounts_NotImplemented(t *testing.T) {
+	t.Parallel()
+
+	if _, err := newTestService(&fakeRepo{}).ReconcileAllAccounts(t.Context()); !errors.Is(err, domain.ErrNotImplemented) {
+		t.Errorf("error = %v, want domain.ErrNotImplemented", err)
 	}
 }

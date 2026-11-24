@@ -101,7 +101,7 @@ func mustPost(t *testing.T, repo transaction.Repository, debit, credit uuid.UUID
 
 	_, err := repo.Create(t.Context(), transaction.CreateTransactionParams{
 		Reference:       "it-" + uuid.NewString(),
-		Type:            "INTEGRATION_TEST",
+		Type:            itTxnType,
 		Currency:        currency.NGN,
 		Metadata:        []byte("{}"),
 		TransactionDate: time.Now(),
@@ -273,4 +273,128 @@ func TestResolveDiscrepancy(t *testing.T) {
 	if err := accounts.ResolveDiscrepancy(ctx, uuid.New(), "x"); !errors.Is(err, account.ErrDiscrepancyNotFound) {
 		t.Errorf("unknown ResolveDiscrepancy error = %v, want ErrDiscrepancyNotFound", err)
 	}
+}
+
+// TestChangeAccountStatus_Transitions checks that a no-op change and any
+// change out of CLOSED are rejected without writing history.
+func TestChangeAccountStatus_Transitions(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	accounts := newAccountRepo(t)
+	wallet := mustCreateAccount(t, accounts, "it-"+uuid.NewString(), account.TypeUserWallet)
+
+	change := func(status account.Status) error {
+		_, err := accounts.ChangeAccountStatus(ctx, account.StatusChangeParams{
+			AccountID: wallet.ID, NewStatus: status, Reason: "it", ActorType: account.ActorTypeAdmin, ActorID: "it",
+		})
+
+		return err
+	}
+
+	if err := change(account.StatusActive); !errors.Is(err, account.ErrStatusUnchanged) {
+		t.Errorf("ACTIVE -> ACTIVE error = %v, want ErrStatusUnchanged", err)
+	}
+
+	if err := change(account.StatusClosed); err != nil {
+		t.Fatalf("ACTIVE -> CLOSED: %v", err)
+	}
+
+	if err := change(account.StatusActive); !errors.Is(err, account.ErrAccountClosed) {
+		t.Errorf("CLOSED -> ACTIVE error = %v, want ErrAccountClosed", err)
+	}
+
+	history, err := accounts.ListAccountStatusHistory(ctx, account.ListAccountStatusHistoryParams{
+		AccountID: wallet.ID, Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("ListAccountStatusHistory: %v", err)
+	}
+
+	if len(history) != 1 || history[0].NewStatus != account.StatusClosed {
+		t.Errorf("history = %+v, want only the ACTIVE -> CLOSED change", history)
+	}
+}
+
+// TestListAccounts_OwnerFilter creates accounts for two owners and checks that
+// filtering by owner returns exactly that owner's accounts, alone or combined
+// with the type filter.
+func TestListAccounts_OwnerFilter(t *testing.T) {
+	t.Parallel()
+
+	accounts := newAccountRepo(t)
+
+	alice, bob := "it-"+uuid.NewString(), "it-"+uuid.NewString()
+	aliceWallet := mustCreateAccount(t, accounts, alice, account.TypeUserWallet)
+	aliceCash := mustCreateAccount(t, accounts, alice, account.TypePlatformCash)
+	mustCreateAccount(t, accounts, bob, account.TypeUserWallet)
+
+	tests := []struct {
+		name    string
+		params  account.ListAccountsParams
+		wantIDs []uuid.UUID
+	}{
+		{
+			name:    "owner only",
+			params:  account.ListAccountsParams{OwnerID: alice},
+			wantIDs: []uuid.UUID{aliceWallet.ID, aliceCash.ID},
+		},
+		{
+			name:    "owner and type",
+			params:  account.ListAccountsParams{OwnerID: alice, Type: string(account.TypeUserWallet)},
+			wantIDs: []uuid.UUID{aliceWallet.ID},
+		},
+		{
+			name:   "unknown owner",
+			params: account.ListAccountsParams{OwnerID: "it-" + uuid.NewString()},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tt.params.Page, tt.params.Limit = 1, 100
+
+			got, err := accounts.List(t.Context(), tt.params)
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+
+			gotIDs := make([]uuid.UUID, len(got))
+			for i, a := range got {
+				gotIDs[i] = a.ID
+
+				if a.OwnerID != tt.params.OwnerID {
+					t.Errorf("account %s has owner %q, want %q", a.ID, a.OwnerID, tt.params.OwnerID)
+				}
+			}
+
+			if !sameIDs(gotIDs, tt.wantIDs) {
+				t.Errorf("List ids = %v, want %v (any order)", gotIDs, tt.wantIDs)
+			}
+		})
+	}
+}
+
+// sameIDs reports whether a and b hold the same ids, ignoring order.
+func sameIDs(a, b []uuid.UUID) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	seen := make(map[uuid.UUID]int, len(a))
+	for _, id := range a {
+		seen[id]++
+	}
+
+	for _, id := range b {
+		if seen[id] == 0 {
+			return false
+		}
+
+		seen[id]--
+	}
+
+	return true
 }

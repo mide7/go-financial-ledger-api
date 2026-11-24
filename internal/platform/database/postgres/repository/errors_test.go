@@ -8,6 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
 )
 
 var errDomain = errors.New("domain not found")
@@ -129,5 +131,91 @@ func TestToInt32(t *testing.T) {
 				t.Errorf("toInt32(%d) = %d, want %d", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestMapInsertTransactionError(t *testing.T) {
+	t.Parallel()
+
+	other := errors.New("connection reset")
+
+	tests := []struct {
+		name string
+		in   error
+		want error
+	}{
+		{
+			name: "one-reversal index means already reversed",
+			in:   &pgconn.PgError{Code: pgErrUniqueViolation, ConstraintName: uniqueOneReversal},
+			want: transaction.ErrAlreadyReversed,
+		},
+		{
+			name: "reference constraint means duplicate reference",
+			in:   &pgconn.PgError{Code: pgErrUniqueViolation, ConstraintName: "transactions_reference_key"},
+			want: transaction.ErrDuplicateReference,
+		},
+		{
+			name: "index name on a non-unique error is not a reversal conflict",
+			in:   &pgconn.PgError{Code: "23503", ConstraintName: uniqueOneReversal},
+			want: nil,
+		},
+		{name: "other errors pass through", in: other, want: other},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := mapInsertTransactionError(tt.in)
+
+			want := tt.want
+			if want == nil {
+				want = tt.in
+			}
+
+			if !errors.Is(got, want) {
+				t.Errorf("mapInsertTransactionError(%v) = %v, want %v", tt.in, got, want)
+			}
+		})
+	}
+}
+
+func TestMapIntegrityError(t *testing.T) {
+	t.Parallel()
+
+	other := errors.New("connection reset")
+	unique := &pgconn.PgError{Code: pgErrUniqueViolation}
+
+	tests := []struct {
+		name string
+		in   error
+		want error
+	}{
+		{name: "currency mismatch", in: &pgconn.PgError{Code: pgErrCurrencyMismatch}, want: transaction.ErrCurrencyMismatch},
+		{
+			name: "wrapped unbalanced",
+			in:   fmt.Errorf("copy: %w", &pgconn.PgError{Code: pgErrUnbalanced}),
+			want: transaction.ErrUnbalancedTransaction,
+		},
+		{name: "other postgres error passes through", in: unique, want: unique},
+		{name: "non-postgres error passes through", in: other, want: other},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := mapIntegrityError(tt.in); !errors.Is(got, tt.want) {
+				t.Errorf("mapIntegrityError(%v) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMapToAccountDomainList_EmptyIsNotNil(t *testing.T) {
+	t.Parallel()
+
+	if got := mapToAccountDomainList(nil); got == nil || len(got) != 0 {
+		t.Errorf("mapToAccountDomainList(nil) = %#v, want an empty non-nil slice (JSON [])", got)
 	}
 }

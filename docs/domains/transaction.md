@@ -7,7 +7,7 @@ A **transaction** is one business event, such as a wallet top-up, a purchase or
 a refund. It's recorded as two or more **entries** that move value between
 accounts. Transactions and entries are **immutable**: a database trigger
 rejects any `UPDATE` or `DELETE`. To undo one, post a new transaction that
-links to it through `parent_transaction_id`. Reversal isn't implemented yet.
+links to it through `parent_transaction_id`; [reversal](#reversal) does this.
 
 ## Transaction
 
@@ -19,7 +19,7 @@ links to it through `parent_transaction_id`. Reversal isn't implemented yet.
 | `currency` | One currency per transaction; every entry's account must use it |
 | `parent_transaction_id` | Optional link to a related transaction (e.g. the one being reversed) |
 | `description` | Text |
-| `metadata` | JSONB, defaults to `{}`; has a GIN index for querying |
+| `metadata` | JSONB object (`json.RawMessage`); omitted or `null` becomes `{}`, any other non-object is `ErrInvalidMetadata`. Has a GIN index for querying |
 | `transaction_date` | Business date supplied by the caller |
 | `created_at` | When it was recorded |
 
@@ -55,10 +55,14 @@ transaction to the repository.
 
 The repository, inside one database transaction:
 
-1. inserts the transaction header (a unique violation on `reference` becomes
+1. share-locks the entry accounts (`LockAccountsForPosting`, `FOR SHARE` in
+   id order) and checks each entry against its account's
+   [status](account.md#status): `ErrEntryAccountNotFound` for an unknown
+   account, `ErrAccountNotPostable` for an entry the status refuses;
+2. inserts the transaction header (a unique violation on `reference` becomes
    `ErrDuplicateReference`);
-2. bulk-inserts the entries with `COPY`;
-3. commits.
+3. bulk-inserts the entries with `COPY` and reads them back;
+4. commits.
 
 The database then enforces the same invariants independently with the
 statement-level trigger `trg_check_transaction_integrity`:
@@ -66,8 +70,11 @@ statement-level trigger `trg_check_transaction_integrity`:
 - every entry's account currency must equal the transaction currency;
 - each transaction's entries must sum to zero.
 
-A violation raises an exception and rolls the insert back. The API reports it
-as a 500, because it means a bug got past the Go validation.
+A violation raises an exception with a custom SQLSTATE and rolls the insert
+back: `LD001` for a currency mismatch, `LD002` for an unbalanced transaction.
+The repository maps them (`mapIntegrityError`) to `ErrCurrencyMismatch` and
+`ErrUnbalancedTransaction`, both 422. The service doesn't check entry account
+currencies itself, so the trigger is what reports a currency mismatch.
 
 ## Example: fund a wallet, then spend
 
@@ -86,14 +93,42 @@ normal direction. This exact scenario is the integration test
 
 | Method | State |
 |---|---|
-| `CreateTransaction` | Implemented |
-| `GetTransactionDetails` | Returns `domain.ErrNotImplemented` (501) |
-| `ListTransactions` | Returns `domain.ErrNotImplemented` (501) |
-| `ReverseTransaction` | Returns `domain.ErrNotImplemented` (501) |
+| `CreateTransaction` | Implemented. Rejects `type` `REVERSAL` with `ErrReservedType`. The repository enforces [account status](account.md#status) |
+| `GetTransactionDetails(id uuid.UUID)` | Implemented. Returns the header and its entries in `entry_sequence` order; `ErrTransactionNotFound` for an unknown id |
+| `ListTransactions(ListTransactionsParams)` | Implemented. Headers only, newest first. Filters: account (any entry on it), reference, type, currency, half-open `created_at` range (`ErrInvalidDateRange` unless start < end when both are set); keyset cursor on `id`. The limit is clamped to 1–100, default 20 (`DefaultPageLimit`, `MaxPageLimit`) |
+| `ReverseTransaction(ReverseTransactionParams)` | Implemented; see [Reversal](#reversal) |
+| `CreateConversion(CreateConversionParams)` | Scaffolded, 501 ([later-fx](../todo.md#later-scaffolded-routes)). Will post one transaction per currency through `PLATFORM_FX_SUSPENSE`, returning a `Conversion` |
 
-The unimplemented methods need new SQL queries. A reversal should post a new
-transaction that mirrors the original's entries with debit and credit swapped,
-with `parent_transaction_id` pointing at the original.
+The repository port matches: `GetByID(uuid.UUID)` returns the transaction with
+its entries, `List` returns headers, and `Reverse(ReverseTransactionParams)`
+returns the reversal. `Create` and `Reverse` share one insert helper, which
+reads the posted entries back inside its
+database transaction, so the created transaction carries their ids and
+sequences.
+
+## Reversal
+
+`Reverse` runs in one database transaction:
+
+1. Load the original; an unknown id is `ErrTransactionNotFound`.
+2. Reject a `REVERSAL` with `ErrCannotReverseReversal`.
+3. Reject an original that already has a reversal (`GetReversalOf`) with `ErrAlreadyReversed`.
+4. Insert a `TypeReversal` header: the caller's `reference`, the original's
+   currency, `parent_transaction_id` = the original, `description` = the
+   reason, `metadata` `{}`, `transaction_date` now.
+5. Lock the accounts and check them with `Status.AllowsReversal`: only a
+   `CLOSED` account refuses (`ErrAccountNotPostable`).
+6. Insert the original's entries with each `type` flipped
+   (`domain.EntryType.Opposite`), same accounts and amounts.
+
+Two concurrent reversals can both pass step 3. The partial unique index
+`uq_transactions_one_reversal` (one `REVERSAL` per `parent_transaction_id`)
+rejects the second insert, and the repository maps that violation, by index
+name, to the same `ErrAlreadyReversed`. Any other unique violation is
+`ErrDuplicateReference`.
+
+Because `CreateTransaction` rejects `type` `REVERSAL`, a client can't post a
+fake reversal that would block the real one.
 
 ## Errors
 
@@ -101,4 +136,9 @@ with `parent_transaction_id` pointing at the original.
 |---|---|
 | `ErrDuplicateReference` | 422 |
 | `ErrAtLeastTwoEntries`, `ErrUnbalancedTransaction`, `ErrInvalidEntryType`, `ErrInvalidEntryAmount`, `ErrInvalidAccountID`, `ErrAmountOverflow`, `ErrInvalidCurrency` | 422 |
-| `ErrTransactionNotFound` | 404 (reserved) |
+| `ErrTransactionNotFound` | 404 |
+| `ErrInvalidDateRange`, `ErrReservedType` | 422 |
+| `ErrAlreadyReversed` | 409 |
+| `ErrCannotReverseReversal` | 422 |
+| `ErrAccountNotPostable`, `ErrEntryAccountNotFound` | 422 |
+| `ErrCurrencyMismatch`, `ErrInvalidMetadata` | 422 |

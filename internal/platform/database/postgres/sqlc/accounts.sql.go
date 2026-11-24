@@ -235,7 +235,7 @@ period_activity AS (
         )
         AND (
             $3::timestamptz IS NULL
-            OR created_at <= $3
+            OR created_at < $3
         )
 )
 SELECT ai.account_id,
@@ -300,6 +300,41 @@ func (q *Queries) GetAccountStatus(ctx context.Context, accountID uuid.UUID) (st
 	var status string
 	err := row.Scan(&status)
 	return status, err
+}
+
+const listAccountIDsAfter = `-- name: ListAccountIDsAfter :many
+SELECT id
+FROM accounts
+WHERE $1::uuid IS NULL
+    OR id > $1::uuid
+ORDER BY id
+LIMIT $2::int
+`
+
+type ListAccountIDsAfterParams struct {
+	After uuid.NullUUID `json:"after"`
+	Limit int32         `json:"limit"`
+}
+
+// Keyset page of account ids, for batch jobs such as reconciling every account.
+func (q *Queries) ListAccountIDsAfter(ctx context.Context, arg ListAccountIDsAfterParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listAccountIDsAfter, arg.After, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAccountStatementEntries = `-- name: ListAccountStatementEntries :many
@@ -575,6 +610,42 @@ func (q *Queries) ListAccountsByOwnerID(ctx context.Context, ownerID string) ([]
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockAccountsForPosting = `-- name: LockAccountsForPosting :many
+SELECT id,
+    status
+FROM accounts
+WHERE id = ANY($1::uuid [])
+ORDER BY id FOR SHARE
+`
+
+type LockAccountsForPostingRow struct {
+	ID     uuid.UUID `json:"id"`
+	Status string    `json:"status"`
+}
+
+// Share-locks the accounts a transaction posts to, so a concurrent status
+// change (which takes FOR UPDATE) waits until the posting commits. Ordered by
+// id so concurrent postings lock in the same order and cannot deadlock.
+func (q *Queries) LockAccountsForPosting(ctx context.Context, accountIds []uuid.UUID) ([]LockAccountsForPostingRow, error) {
+	rows, err := q.db.Query(ctx, lockAccountsForPosting, accountIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LockAccountsForPostingRow{}
+	for rows.Next() {
+		var i LockAccountsForPostingRow
+		if err := rows.Scan(&i.ID, &i.Status); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

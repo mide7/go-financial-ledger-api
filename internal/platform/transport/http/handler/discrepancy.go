@@ -23,3 +23,11 @@ func (h *handler) ResolveDiscrepancy(w http.ResponseWriter, r *http.Request) {
 			return nil, h.accountService.ResolveDiscrepancy(ctx, req.ID, req.Notes)
 		})
 }
+
+// ReconcileAllAccounts reconciles every account and summarises the run.
+func (h *handler) ReconcileAllAccounts(w http.ResponseWriter, r *http.Request) {
+	h.serve(w, r, endpoint{sources: fromQuery, status: http.StatusOK, message: "reconciliation run finished"},
+		func(ctx context.Context, _ struct{}) (*account.ReconciliationRun, error) {
+			return h.accountService.ReconcileAllAccounts(ctx)
+		})
+}

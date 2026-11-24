@@ -244,6 +244,10 @@ func (r *accountRepository) ChangeAccountStatus(
 		return nil, account.ErrStatusConflict
 	}
 
+	if err := account.Status(lockedAccount.Status).CheckTransition(params.NewStatus); err != nil {
+		return nil, err
+	}
+
 	if err = qtx.UpdateAccountStatus(ctx, sqlc.UpdateAccountStatusParams{
 		AccountID: params.AccountID,
 		Status:    params.NewStatus.String(),
@@ -374,6 +378,13 @@ func (r *accountRepository) ResolveDiscrepancy(ctx context.Context, id uuid.UUID
 	}
 
 	return nil
+}
+
+// ListAccountIDs returns a keyset page of account ids.
+//
+// TODO(later-reconcile-all): call r.queries.ListAccountIDsAfter; see docs/todo.md.
+func (r *accountRepository) ListAccountIDs(_ context.Context, _ uuid.NullUUID, _ int32) ([]uuid.UUID, error) {
+	return nil, domain.ErrNotImplemented
 }
 
 // CreateBalanceSnapshot checkpoints the account's balance at its latest entry.

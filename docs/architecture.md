@@ -35,6 +35,7 @@ internal/
     account/      Account domain: model, params, Repository port, Service
     transaction/  Transaction domain: model, params + Validate, Repository port, Service
     currency/     Currency codes, FormatMinor, Registry port
+    withdrawal/   Withdrawal domain: model, params, Repository port, stub Service
   pagination/ Offset and cursor page envelopes
   platform/
     database/postgres/
@@ -43,12 +44,13 @@ internal/
       sqlc/         Generated code (do not edit)
       repository/   Domain ports implemented on Postgres (+ CurrencyRegistry)
       seeder.go     Reference-data seeding
+    idempotency/    Idempotency-Key Store port (Postgres adapter in repository/)
     transport/http/
       router.go, server.go   Routes and the http.Server
       handler/      HTTP handlers (one per endpoint)
       dto/          Request structs with validation tags
       httputil/     Request decoding and error → status mapping
-      middleware/   Recovery, logging, JSON response envelope
+      middleware/   Recovery, logging, JSON response envelope, Idempotency
       validation/   go-playground/validator setup and client-facing messages
 docs/         This documentation
 docker/       Development and production Dockerfiles and compose files
@@ -65,6 +67,11 @@ Take `POST /api/v1/transactions` as an example:
    and wraps it in the [standard envelope](api.md#response-envelope).
 2. **Router** ([router.go](../internal/platform/transport/http/router.go)) mounts
    `/health/` and `/api/v1/` using Go 1.22+ method patterns (`POST /transactions`).
+   The POST routes that move money are wrapped in `middleware.Idempotency`,
+   which runs inside `JSONResponse`: with an `Idempotency-Key` header it
+   claims the key in `idempotency_records`, then either replays a saved
+   response or runs the handler and saves its unwrapped output (see
+   [API → Idempotency-Key](api.md#idempotency-key-header)).
 3. **Handler** ([handler/](../internal/platform/transport/http/handler/))
    decodes the request with `httputil.DecodeAndValidate`, choosing which parts
    of the request to read (`SourcePath`, `SourceQuery`, `SourceBody`). It then
@@ -91,8 +98,11 @@ config.Load → logger.New (+ slog.SetDefault)
            → repository.NewCurrencyRegistry(…, log)  (loads cache, starts LISTEN goroutine)
            → repository.NewAccountRepository / NewTransactionRepository
            → account.NewAccountService(…, log) / transaction.NewTransactionService
-           → handler.NewHandler(…, log) / NewHealthCheckHandler
-           → httptransport.NewRouter → httptransport.NewServer(…, log)
+           → withdrawal.NewWithdrawalService()  (stub, no repository yet)
+           → handler.NewHandler(handler.Services{…}, log) / NewHealthCheckHandler
+           → repository.NewIdempotencyStore → middleware.Idempotency(store, cfg.IdempotencyTTL, log)
+             (+ purgeIdempotencyRecords goroutine: DeleteExpired every hour)
+           → httptransport.NewRouter(…, idempotent) → httptransport.NewServer(…, log)
 ```
 
 `main` builds the logger and closes it only after logging `run`'s final error,
@@ -102,7 +112,7 @@ with code 2 on a usage error.
 
 Shutdown is triggered by SIGINT or SIGTERM. The server stops accepting
 connections and waits up to 30 s for in-flight requests. Cancelling the root
-context also stops the currency registry's listener.
+context also stops the currency registry's listener and the idempotency purge loop.
 
 ## Conventions
 

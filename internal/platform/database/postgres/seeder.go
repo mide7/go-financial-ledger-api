@@ -8,16 +8,19 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/sqlc"
 )
 
 // Seed values repeated across the reference data below.
 const (
 	systemOwnerID   = "admin"
-	systemCurrency  = "NGN"
 	natureLiability = "LIABILITY"
 	balanceCredit   = "CREDIT"
 )
+
+// systemCurrencies are the seeded currencies; each gets a system account of every type.
+var systemCurrencies = []currency.Code{currency.USD, currency.EUR, currency.NGN}
 
 // Seeder inserts the reference data the ledger needs to run.
 type Seeder struct {
@@ -72,9 +75,9 @@ func (s *Seeder) Run(ctx context.Context) error {
 
 func (s *Seeder) seedCurrencies(ctx context.Context, qtx *sqlc.Queries) error {
 	currencies := []sqlc.SeedCurrencyParams{
-		{Code: "USD", Name: "US Dollar", Exponent: 2, IsActive: true},
-		{Code: "EUR", Name: "Euro", Exponent: 2, IsActive: true},
-		{Code: systemCurrency, Name: "Nigerian Naira", Exponent: 2, IsActive: true},
+		{Code: currency.USD.String(), Name: "US Dollar", Exponent: 2, IsActive: true},
+		{Code: currency.EUR.String(), Name: "Euro", Exponent: 2, IsActive: true},
+		{Code: currency.NGN.String(), Name: "Nigerian Naira", Exponent: 2, IsActive: true},
 	}
 
 	for _, c := range currencies {
@@ -161,13 +164,15 @@ func (s *Seeder) seedAccountTypes(ctx context.Context, qtx *sqlc.Queries) error 
 // seedSystemAccounts creates one system-owned account per account type, so the
 // list can neither repeat nor miss a type as types are added.
 func (s *Seeder) seedSystemAccounts(ctx context.Context, qtx *sqlc.Queries) error {
-	for _, accountType := range account.AllTypes {
-		if err := qtx.SeedSystemAccount(ctx, sqlc.SeedSystemAccountParams{
-			OwnerID:  systemOwnerID,
-			Type:     string(accountType),
-			Currency: systemCurrency,
-		}); err != nil {
-			return fmt.Errorf("%s: %w", accountType, err)
+	for _, code := range systemCurrencies {
+		for _, accountType := range account.AllTypes {
+			if err := qtx.SeedSystemAccount(ctx, sqlc.SeedSystemAccountParams{
+				OwnerID:  systemOwnerID,
+				Type:     string(accountType),
+				Currency: code.String(),
+			}); err != nil {
+				return fmt.Errorf("%s %s: %w", code, accountType, err)
+			}
 		}
 	}
 

@@ -33,6 +33,7 @@ cp .env.example .env
 | `LOG_FORMAT` | no | `text` (dev) / `json` (prod) | Default format for outputs without an `@format` suffix |
 | `LOG_OUTPUTS` | no | `stderr` (dev) / `stdout` (prod) | Where logs go; see [Logging](#logging) |
 | `PORT` | no | `:8080` | HTTP listen address; a bare number like `8080` also works |
+| `IDEMPOTENCY_TTL` | no | `24h` | How long an [`Idempotency-Key`](api.md#idempotency-key-header) response is kept and replayed; a positive Go duration (`90m`, `48h`) |
 | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB` | no | `localhost`, `6379`, empty, `0` | Reserved; Redis is not used yet. `REDIS_DB` must be an integer. |
 | `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | no | empty | Reserved; not used yet |
 | `FRONTEND_URL` | no | empty | Reserved; not used yet |
@@ -123,7 +124,7 @@ transaction. Every insert is `ON CONFLICT DO NOTHING`, so re-running is safe.
 
 - **Currencies:** USD, EUR and NGN, each with exponent 2 and active.
 - **Account types:** the 10 types listed in [Account domain](domains/account.md#account-types).
-- **System accounts:** one NGN account per account type, owned by `admin`.
+- **System accounts:** one account per account type in each of USD, EUR and NGN (30 in all), owned by `admin`.
 
 ## Migrations
 

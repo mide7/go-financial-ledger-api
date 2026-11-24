@@ -20,6 +20,8 @@ type Repository interface {
 	GetStatementSummary(ctx context.Context, params GetStatementSummaryParams) (*StatementSummary, error)
 	ListStatementEntries(ctx context.Context, params GetStatementEntriesParams) ([]StatementEntry, error)
 	Reconcile(ctx context.Context, accountID uuid.UUID) (*ReconciliationResult, error)
+	// ListAccountIDs returns up to limit account ids greater than after, in id order.
+	ListAccountIDs(ctx context.Context, after uuid.NullUUID, limit int32) ([]uuid.UUID, error)
 
 	// Status management
 	ChangeAccountStatus(ctx context.Context, params StatusChangeParams) (*StatusHistory, error)

@@ -33,6 +33,7 @@ cp .env.example .env
 | `LOG_FORMAT` | no | `text` (dev) / `json` (prod) | Default format for outputs without an `@format` suffix |
 | `LOG_OUTPUTS` | no | `stderr` (dev) / `stdout` (prod) | Where logs go; see [Logging](#logging) |
 | `PORT` | no | `:8080` | HTTP listen address; a bare number like `8080` also works |
+| `IDEMPOTENCY_TTL` | no | `24h` | How long an [`Idempotency-Key`](api.md#idempotency-key-header) response is kept and replayed; a positive Go duration (`90m`, `48h`) |
 | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB` | no | `localhost`, `6379`, empty, `0` | Reserved; Redis is not used yet. `REDIS_DB` must be an integer. |
 | `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | no | empty | Reserved; not used yet |
 | `FRONTEND_URL` | no | empty | Reserved; not used yet |

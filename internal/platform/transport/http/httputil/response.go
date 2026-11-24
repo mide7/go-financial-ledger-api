@@ -9,6 +9,7 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/domain"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/withdrawal"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/middleware"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/validation"
 )
@@ -39,21 +40,41 @@ var errorMappings = []errorMapping{
 	{account.ErrInvalidActorType, http.StatusUnprocessableEntity, "invalid actor type"},
 	{account.ErrStatusConflict, http.StatusConflict, "account is not in the expected status"},
 	{account.ErrDiscrepancyNotFound, http.StatusNotFound, "discrepancy not found or already resolved"},
+	{account.ErrStatusUnchanged, http.StatusConflict, "account is already in that status"},
+	{account.ErrAccountClosed, http.StatusConflict, "account is closed; its status can't change"},
 
 	// Transaction errors
 	{transaction.ErrDuplicateReference, http.StatusUnprocessableEntity, "duplicate reference"},
 	{transaction.ErrTransactionNotFound, http.StatusNotFound, "transaction not found"},
+	{transaction.ErrInvalidDateRange, http.StatusUnprocessableEntity, "start_date must be before end_date"},
+	{transaction.ErrInvalidMetadata, http.StatusUnprocessableEntity, "metadata must be a JSON object"},
+	{transaction.ErrReservedType, http.StatusUnprocessableEntity, "transaction type REVERSAL is reserved"},
 	{transaction.ErrInvalidCurrency, http.StatusUnprocessableEntity, "invalid currency code"},
 	{transaction.ErrAtLeastTwoEntries, http.StatusUnprocessableEntity, "transaction must contain at least two entries"},
 	{transaction.ErrUnbalancedTransaction, http.StatusUnprocessableEntity, "debits and credits must balance to zero"},
 	{transaction.ErrInvalidEntryType, http.StatusUnprocessableEntity, "invalid entry type"},
 	{transaction.ErrInvalidEntryAmount, http.StatusUnprocessableEntity, "entry amount must be greater than zero"},
 	{transaction.ErrInvalidAccountID, http.StatusUnprocessableEntity, "entry account ID is required"},
+	{transaction.ErrAlreadyReversed, http.StatusConflict, "transaction has already been reversed"},
+	{transaction.ErrCannotReverseReversal, http.StatusUnprocessableEntity, "a reversal cannot itself be reversed"},
+	{transaction.ErrAccountNotPostable, http.StatusUnprocessableEntity, "account status does not allow this entry"},
+	{transaction.ErrEntryAccountNotFound, http.StatusUnprocessableEntity, "entry account not found"},
+	{
+		transaction.ErrCurrencyMismatch,
+		http.StatusUnprocessableEntity,
+		"entry account currency does not match the transaction currency",
+	},
 	{
 		transaction.ErrAmountOverflow,
 		http.StatusUnprocessableEntity,
 		"total debits or credits exceed the maximum amount",
 	},
+
+	// Withdrawal errors
+	{withdrawal.ErrWithdrawalNotFound, http.StatusNotFound, "withdrawal not found"},
+	{withdrawal.ErrNotProcessing, http.StatusConflict, "withdrawal is no longer processing"},
+
+	// Idempotency-Key errors
 
 	// Endpoints without an implementation yet
 	{domain.ErrNotImplemented, http.StatusNotImplemented, "not implemented yet"},

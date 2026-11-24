@@ -22,6 +22,8 @@ var (
 	ErrSnapshotNotFound    = errors.New("no balance snapshot exists for account")
 	ErrSnapshotExists      = errors.New("no new entries since the last balance snapshot")
 	ErrStatusConflict      = errors.New("account is not in the expected status")
+	ErrStatusUnchanged     = errors.New("account is already in that status")
+	ErrAccountClosed       = errors.New("account is closed; its status can't change")
 	ErrDiscrepancyNotFound = errors.New("discrepancy not found or already resolved")
 )
 
@@ -122,6 +124,47 @@ type Account struct {
 	UpdatedAt time.Time     `json:"updated_at"`
 }
 
+// AllowsEntry reports whether an account in status s accepts an entry of type t.
+// Restrictions are in ledger terms: DEBIT_RESTRICTED refuses debit entries and
+// CREDIT_RESTRICTED refuses credit entries, whatever the account's normal
+// balance. FULLY_FROZEN and CLOSED refuse both.
+func (s Status) AllowsEntry(t domain.EntryType) bool {
+	switch s {
+	case StatusActive:
+		return true
+	case StatusDebitRestricted:
+		return t == domain.EntryTypeCredit
+	case StatusCreditRestricted:
+		return t == domain.EntryTypeDebit
+	case StatusFullyFrozen, StatusClosed:
+		return false
+	default:
+		return false
+	}
+}
+
+// AllowsReversal reports whether an account in status s accepts the entries
+// of a reversal. A reversal corrects an earlier posting, so restrictions and
+// freezes don't block it; only CLOSED (and an unknown status) does.
+func (s Status) AllowsReversal() bool {
+	return s.IsValid() && s != StatusClosed
+}
+
+// CheckTransition returns nil when an account may move from status s to next:
+// ErrStatusUnchanged when next equals s, ErrAccountClosed when s is CLOSED
+// (closing is final).
+func (s Status) CheckTransition(next Status) error {
+	if s == StatusClosed {
+		return ErrAccountClosed
+	}
+
+	if s == next {
+		return ErrStatusUnchanged
+	}
+
+	return nil
+}
+
 // StatusHistory records one change of an account's status and who made it.
 type StatusHistory struct {
 	ID             uuid.UUID `json:"id"`
@@ -217,4 +260,12 @@ type BalanceSnapshot struct {
 	Balance           int64     `json:"balance"` // normal-balance positive
 	LastEntrySequence int64     `json:"last_entry_sequence"`
 	CreatedAt         time.Time `json:"created_at"`
+}
+
+// ReconciliationRun summarises one ReconcileAllAccounts pass.
+type ReconciliationRun struct {
+	AccountsChecked    int       `json:"accounts_checked"`
+	DiscrepanciesFound int       `json:"discrepancies_found"`
+	StartedAt          time.Time `json:"started_at"`
+	FinishedAt         time.Time `json:"finished_at"`
 }

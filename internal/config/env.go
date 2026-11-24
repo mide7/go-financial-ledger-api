@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -30,16 +31,19 @@ type Config struct {
 	LogFormat  string
 	LogOutputs []string
 
-	Port          string
-	DatabaseURL   string
-	RedisHost     string
-	RedisPort     string
-	RedisPassword string
-	RedisDB       int
-	AdminName     string
-	AdminEmail    string
-	AdminPassword string
-	FrontendURL   string
+	Port string
+	// IdempotencyTTL is how long an Idempotency-Key's saved response is kept
+	// and replayed (IDEMPOTENCY_TTL, a Go duration; default 24h).
+	IdempotencyTTL time.Duration
+	DatabaseURL    string
+	RedisHost      string
+	RedisPort      string
+	RedisPassword  string
+	RedisDB        int
+	AdminName      string
+	AdminEmail     string
+	AdminPassword  string
+	FrontendURL    string
 }
 
 // Load reads a local .env file if one exists, then builds a Config from the
@@ -57,21 +61,28 @@ func fromEnv() (*Config, error) {
 		return nil, fmt.Errorf("parse REDIS_DB: %w", err)
 	}
 
+	idempotencyTTL, err := time.ParseDuration(getEnv("IDEMPOTENCY_TTL", "24h"))
+	if err != nil || idempotencyTTL <= 0 {
+		return nil, fmt.Errorf("%w: IDEMPOTENCY_TTL=%q (want a positive duration such as 24h)",
+			ErrInvalidValue, getEnv("IDEMPOTENCY_TTL", ""))
+	}
+
 	cfg := &Config{
-		AppEnv:        cmp.Or(getEnv("APP_ENV", ""), logger.EnvDevelopment), // unset or empty → development
-		LogLevel:      getEnv("LOG_LEVEL", ""),
-		LogFormat:     getEnv("LOG_FORMAT", ""),
-		LogOutputs:    splitList(getEnv("LOG_OUTPUTS", "")),
-		Port:          getEnv("PORT", ":8080"),
-		DatabaseURL:   getEnv("DATABASE_URL", ""),
-		RedisHost:     getEnv("REDIS_HOST", "localhost"),
-		RedisPort:     getEnv("REDIS_PORT", "6379"),
-		RedisPassword: getEnv("REDIS_PASSWORD", ""),
-		RedisDB:       redisDB,
-		AdminName:     getEnv("ADMIN_NAME", ""),
-		AdminEmail:    getEnv("ADMIN_EMAIL", ""),
-		AdminPassword: getEnv("ADMIN_PASSWORD", ""),
-		FrontendURL:   getEnv("FRONTEND_URL", ""),
+		AppEnv:         cmp.Or(getEnv("APP_ENV", ""), logger.EnvDevelopment), // unset or empty → development
+		LogLevel:       getEnv("LOG_LEVEL", ""),
+		LogFormat:      getEnv("LOG_FORMAT", ""),
+		LogOutputs:     splitList(getEnv("LOG_OUTPUTS", "")),
+		Port:           getEnv("PORT", ":8080"),
+		IdempotencyTTL: idempotencyTTL,
+		DatabaseURL:    getEnv("DATABASE_URL", ""),
+		RedisHost:      getEnv("REDIS_HOST", "localhost"),
+		RedisPort:      getEnv("REDIS_PORT", "6379"),
+		RedisPassword:  getEnv("REDIS_PASSWORD", ""),
+		RedisDB:        redisDB,
+		AdminName:      getEnv("ADMIN_NAME", ""),
+		AdminEmail:     getEnv("ADMIN_EMAIL", ""),
+		AdminPassword:  getEnv("ADMIN_PASSWORD", ""),
+		FrontendURL:    getEnv("FRONTEND_URL", ""),
 	}
 
 	if cfg.AppEnv != logger.EnvDevelopment && cfg.AppEnv != logger.EnvProduction {

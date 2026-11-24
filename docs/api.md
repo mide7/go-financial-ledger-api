@@ -23,9 +23,19 @@ minor units** (e.g. `10000` = ₦100.00 for NGN, exponent 2).
 | POST | `/api/v1/discrepancies/{id}/resolve` | Mark a discrepancy resolved | 200 |
 | GET | `/api/v1/currencies` | Active currencies | 200 |
 | POST | `/api/v1/transactions` | Post a balanced transaction | 201 |
-| GET | `/api/v1/transactions` | List transactions | **501** |
-| GET | `/api/v1/transactions/{id}` | Transaction details | **501** |
-| POST | `/api/v1/transactions/{id}/reverse` | Reverse a transaction | **501** |
+| GET | `/api/v1/transactions` | List transactions | 200 |
+| GET | `/api/v1/transactions/{id}` | Transaction details with entries | 200 |
+| POST | `/api/v1/transactions/{id}/reverse` | Reverse a transaction | 201 |
+| POST | `/api/v1/conversions` | Convert between currencies | **501** ([later-fx](todo.md#later-scaffolded-routes)) |
+| POST | `/api/v1/reconciliations` | Reconcile every account | **501** ([later-reconcile-all](todo.md#later-scaffolded-routes)) |
+| POST | `/api/v1/withdrawals` | Lock funds and open a withdrawal | **501** ([later-withdrawals](todo.md#later-scaffolded-routes)) |
+| GET | `/api/v1/withdrawals` | List withdrawals | **501** |
+| GET | `/api/v1/withdrawals/{id}` | Withdrawal details | **501** |
+| POST | `/api/v1/withdrawals/{id}/settle` | Record a paid-out withdrawal | **501** |
+| POST | `/api/v1/withdrawals/{id}/fail` | Record a failed withdrawal, releasing the funds | **501** |
+
+Routes marked **501** are scaffolded: they decode and validate their input as
+documented below, then answer 501 `not implemented yet`. [todo.md](todo.md) tracks them.
 
 `/health` without the trailing slash is redirected (301) to `/health/`.
 
@@ -53,7 +63,7 @@ The `JSONResponse` middleware wraps every response body:
 
 - `message` is the handler's custom message, or the HTTP status text.
 - For status < 400 the payload is in `data` and `errors` is `null`. For status ≥ 400 it's the reverse.
-- An empty list is currently returned as `"data": null`, not `[]`. See [Known issues](known-issues.md).
+- An empty list is returned as `"data": []`.
 
 ## Errors
 
@@ -87,10 +97,28 @@ list of field errors:
 | 422 | `start_date must not be after end_date` | Bad statement window |
 | 422 | `duplicate reference` | Transaction reference already used |
 | 422 | `transaction must contain at least two entries` | Fewer than two legs |
-| 422 | `debits and credits must balance to zero` | Unbalanced transaction |
+| 422 | `debits and credits must balance to zero` | Unbalanced transaction (checked in Go, and again by the database trigger) |
 | 422 | `invalid entry type` / `entry amount must be greater than zero` / `entry account ID is required` | Bad leg |
 | 422 | `total debits or credits exceed the maximum amount` | A side's total overflows int64 |
-| 404 | `transaction not found` | Reserved for transaction lookup |
+| 404 | `transaction not found` | Unknown transaction id (lookup, reversal) |
+| 422 | `start_date must be before end_date` | Bad transaction-list window |
+| 422 | `transaction type REVERSAL is reserved` | `POST /transactions` with `type: REVERSAL` |
+| 409 | `transaction has already been reversed` | The transaction already has a reversal |
+| 422 | `a reversal cannot itself be reversed` | Reversing a `REVERSAL` |
+| 422 | `account status does not allow this entry` | An entry's account status refuses it ([rules](domains/account.md#status)) |
+| 422 | `entry account not found` | An entry names an account that doesn't exist |
+| 422 | `entry account currency does not match the transaction currency` | An entry's account has another currency (reported by the database trigger) |
+| 422 | `metadata must be a JSON object` | `metadata` is an array, string or number |
+| 422 | `invalid account status` / `invalid actor type` | Bad status change |
+| 409 | `account is not in the expected status` | `expected_status` didn't match |
+| 409 | `account is already in that status` | Status change to the current status |
+| 409 | `account is closed; its status can't change` | Status change on a `CLOSED` account |
+| 404 | `discrepancy not found or already resolved` | Unknown or resolved discrepancy |
+| 404 | `withdrawal not found` / 409 `withdrawal is no longer processing` | Reserved for withdrawals |
+| 400 | `Idempotency-Key must be 1–256 characters` | Empty or over-long [`Idempotency-Key`](#idempotency-key-header) |
+| 413 | `request body too large` | Body over 1 MiB on a route that takes `Idempotency-Key`, when the header is sent |
+| 422 | `idempotency key reused with a different request` | Same key, different method, path or body |
+| 409 | `a request with this idempotency key is in progress` | Retry while the first request with the key is still running |
 | 501 | `not implemented yet` | Endpoint has no implementation yet |
 | 500 | `an unexpected error occurred` | Anything else (details are logged, not returned) |
 
@@ -135,6 +163,7 @@ Returns 409 if the owner already has an account of that type and currency.
 | `limit` | 1–100, default 20 |
 | `currency` | optional filter, 3 uppercase letters |
 | `type` | optional filter, same values as create |
+| `owner_id` | optional filter, ≤ 64 chars; finds an owner's accounts |
 
 Results are sorted newest first (`created_at DESC, id DESC`).
 
@@ -166,7 +195,8 @@ Both dates are required, and `start_date` must not be after `end_date`.
 ```
 
 - The opening balance covers entries before `start_date`. The period covers
-  `start_date ≤ created_at ≤ end_date`, with the end **inclusive**.
+  `start_date ≤ created_at < end_date`: the end is **exclusive**, as for
+  statement entries and the transaction list.
 - Totals are unsigned. The closing balance is the opening balance plus the
   period's movement in the account's normal direction.
 
@@ -251,8 +281,9 @@ API callers are always recorded with actor type `ADMIN`. Returns 200
   "reason": "KYC review", "actor_type": "ADMIN", "actor_id": "admin-7", "created_at": "…" }
 ```
 
-Changing to the current status fails the history table's CHECK and currently
-returns 500. See [Known issues](known-issues.md).
+Changing to the current status is 409 `account is already in that status`, and
+a `CLOSED` account can't change status at all (409 `account is closed; its
+status can't change`). `expected_status` is checked first.
 
 ### `GET /api/v1/accounts/{id}/status/history[?limit=…][&cursor=…&cursor_created_at=…]`
 
@@ -309,7 +340,7 @@ Returns the active currencies from the in-memory registry, sorted by code:
   "type": "WALLET_FUNDING",
   "currency": "NGN",
   "description": "Card top-up",
-  "metadata": "e30=",
+  "metadata": { "channel": "card" },
   "transaction_date": "2026-11-20T10:00:00Z",
   "entries": [
     { "account_id": "<platform cash id>", "type": "DEBIT",  "amount": 1000000 },
@@ -321,19 +352,151 @@ Returns the active currencies from the in-memory registry, sorted by code:
 | Field | Rules |
 |---|---|
 | `reference` | required, 1–128 chars, **unique** (acts as an idempotency key; reuse returns 422 `duplicate reference`) |
-| `type` | required, 1–64 chars; free-form business label |
+| `type` | required, 1–64 chars; free-form business label. `REVERSAL` is reserved (422); use the reverse endpoint |
 | `currency` | 3 chars, must be active; every entry's account must have this currency (enforced by a DB trigger) |
 | `parent_transaction_id` | optional UUID |
 | `description` | required, ≤ 256 chars |
-| `metadata` | **base64-encoded JSON** (`"e30="` is `{}`). Effectively required for now; see [Known issues](known-issues.md) |
+| `metadata` | optional JSON **object**, stored as JSONB; omitted or `null` is stored as `{}`. Any other JSON type is 422 `metadata must be a JSON object` |
 | `transaction_date` | required, RFC 3339; the business date, separate from `created_at` |
-| `entries` | ≥ 2 legs; each has a UUID `account_id`, `type` `DEBIT`/`CREDIT`, and `amount` > 0. Debits must equal credits. |
+| `entries` | ≥ 2 legs; each has a UUID `account_id`, `type` `DEBIT`/`CREDIT`, and `amount` > 0. Debits must equal credits. Each account must exist (422 `entry account not found`) and its [status](domains/account.md#status) must allow the entry's type (422 `account status does not allow this entry`) |
 
-Returns 201 `"transaction created"` with the transaction header. The response's
-`entries` field is currently `null`; the posted legs aren't echoed back.
+Returns 201 `"transaction created"` with the transaction and its posted
+`entries` (the same shape as `GET /transactions/{id}`).
 
-### `GET /api/v1/transactions`, `GET /api/v1/transactions/{id}`, `POST /api/v1/transactions/{id}/reverse`
+### `GET /api/v1/transactions/{id}`
 
-These validate their input, then return **501** `not implemented yet`. Query
-parameters accepted by the list endpoint: `page`, `limit` (1–100), `type`, and
-`status` (`POSTED`, `REVERSED` or `FAILED`).
+Returns the transaction with its `entries` in `entry_sequence` order, or 404
+`transaction not found`. A malformed id is 400.
+
+```json
+{
+  "id": "019a…",
+  "reference": "order-1001",
+  "type": "WALLET_FUNDING",
+  "currency": "NGN",
+  "parent_transaction_id": null,
+  "description": "Card top-up",
+  "metadata": { "channel": "card" },
+  "transaction_date": "2026-11-20T10:00:00Z",
+  "created_at": "2026-11-20T10:00:01Z",
+  "entries": [
+    {
+      "id": "019a…", "transaction_id": "019a…", "account_id": "<platform cash id>",
+      "type": "DEBIT", "amount": 1000000, "entry_sequence": 41, "created_at": "2026-11-20T10:00:01Z"
+    },
+    {
+      "id": "019a…", "transaction_id": "019a…", "account_id": "<user wallet id>",
+      "type": "CREDIT", "amount": 1000000, "entry_sequence": 42, "created_at": "2026-11-20T10:00:01Z"
+    }
+  ]
+}
+```
+
+### `GET /api/v1/transactions`
+
+Returns transaction headers **newest first**, without entries (the `entries`
+field is omitted); fetch `GET /transactions/{id}` for the legs. To get the next
+page, pass the last item's `id` as `cursor`; a page shorter than `limit` is the
+last one.
+
+| Query | Rules |
+|---|---|
+| `account_id` | optional UUID; transactions with an entry on this account |
+| `reference` | optional, ≤ 128 chars |
+| `type` | optional, ≤ 64 chars |
+| `currency` | optional, 3 uppercase letters |
+| `start_date`, `end_date` | optional RFC 3339; `start_date ≤ created_at < end_date`. When both are given, `start_date` must be before `end_date`, else 422 `start_date must be before end_date` |
+| `cursor` | the `id` of the last transaction on the previous page |
+| `limit` | 1–100, default 20 |
+
+### `POST /api/v1/transactions/{id}/reverse`
+
+```json
+{ "reference": "order-1001-reversal", "reason": "duplicate charge" }
+```
+
+`reference` (1–128 chars, unique) and `reason` (1–256 chars) are required.
+Posts a `REVERSAL` transaction that mirrors the original's entries with debit
+and credit swapped, in the original's currency, so every affected balance
+returns to what it was before the original. The reversal's
+`parent_transaction_id` is the original, its `description` is the `reason`,
+`metadata` is `{}` and `transaction_date` is the time of the reversal.
+
+Returns 201 `"transaction reversed"` with the reversal and its entries (the
+shape of `GET /transactions/{id}`).
+
+| Status | When |
+|---|---|
+| 404 `transaction not found` | No transaction with that id |
+| 409 `transaction has already been reversed` | It already has a reversal, including when two reversals race |
+| 422 `a reversal cannot itself be reversed` | The id is a `REVERSAL` |
+| 422 `duplicate reference` | `reference` is already used by any transaction |
+
+Reversal entries ignore restrictions and freezes, but a `CLOSED` account
+refuses them: 422 `account status does not allow this entry`.
+
+### `POST /api/v1/conversions` (501)
+
+```json
+{ "reference": "fx-1", "source_account_id": "<NGN wallet>", "target_account_id": "<USD wallet>",
+  "source_amount": 150000, "rate": "0.00065" }
+```
+
+`rate` is target units per source unit, as a decimal string. The conversion
+will be posted as one transaction per currency through the
+`PLATFORM_FX_SUSPENSE` accounts, and will answer 201 `"conversion created"`
+with `{reference, rate, source, target}`.
+
+## Reconciliation jobs
+
+### `POST /api/v1/reconciliations` (501)
+
+Will reconcile every account (see [Reconciliation](domains/account.md#reconciliation))
+and answer 200 `"reconciliation run finished"` with
+`{accounts_checked, discrepancies_found, started_at, finished_at}`.
+
+## Withdrawals (501)
+
+Scaffolded routes; see [Withdrawal domain](domains/withdrawal.md).
+
+| Route | Body or query |
+|---|---|
+| `POST /api/v1/withdrawals` | `{ "account_id", "amount" (> 0), "processor" (1–64), "reference" (1–128) }` → 201 |
+| `GET /api/v1/withdrawals` | `account_id`, `status` (`PROCESSING`, `SETTLED`, `FAILED`), `cursor`, `limit` (1–100) |
+| `GET /api/v1/withdrawals/{id}` | none |
+| `POST /api/v1/withdrawals/{id}/settle` | `{ "processor_reference" (1–128) }` |
+| `POST /api/v1/withdrawals/{id}/fail` | `{ "reason" (1–256) }` |
+
+## `Idempotency-Key` header
+
+These routes accept an optional `Idempotency-Key` header (1–256 characters),
+which makes a retry safe after a timeout or dropped connection:
+
+- `POST /api/v1/transactions`
+- `POST /api/v1/transactions/{id}/reverse`
+- `POST /api/v1/conversions`
+- `POST /api/v1/withdrawals`
+
+Other routes ignore the header. A request without it behaves as before.
+
+The request is fingerprinted by SHA-256 of its method, path and body, and the
+key is kept for `IDEMPOTENCY_TTL` (default 24 h; see
+[Getting started](getting-started.md#configuration)).
+
+| Situation | Response |
+|---|---|
+| First request with the key | Runs normally. A response below 500 is saved |
+| Retry, same key and request, first one finished | The saved status, message and `data`/`errors`, with header `Idempotent-Replayed: true`. The handler doesn't run again. This includes saved 4xx responses |
+| Retry while the first is still running | 409 `a request with this idempotency key is in progress` |
+| Same key, different method, path or body | 422 `idempotency key reused with a different request` |
+| The first request got a 5xx or crashed | The key is marked failed; a retry of the same request runs again |
+| The key has expired | Treated as a new key |
+
+Replayed JSON is equal in value to the original, but object keys may come back
+in a different order (the response is stored as JSONB). The envelope's
+`timestamp` is the time of the replay.
+
+Keys are global, not per caller, because the API has no authentication yet
+([gap-6](todo.md#gap-6-authentication-deferred)); use unguessable keys such as
+UUIDs. The transaction `reference` remains the ledger's own duplicate check:
+a new key with a reused reference still gets 422 `duplicate reference`.

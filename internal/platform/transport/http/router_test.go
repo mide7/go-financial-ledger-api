@@ -16,6 +16,7 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/withdrawal"
 	httptransport "github.com/mide7/go-financial-ledger-api/internal/platform/transport/http"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handler"
 )
@@ -69,7 +70,7 @@ func (fakeCurrencies) List() []currency.Currency {
 
 type fakeTransactions struct{ transaction.Service }
 
-func (fakeTransactions) GetTransactionDetails(context.Context, string) (*transaction.Transaction, error) {
+func (fakeTransactions) GetTransactionDetails(context.Context, uuid.UUID) (*transaction.Transaction, error) {
 	return nil, domain.ErrNotImplemented
 }
 
@@ -92,13 +93,14 @@ func serveWithLogs(
 	var logs bytes.Buffer
 
 	router := httptransport.NewRouter(
-		handler.NewHandler(
-			accounts,
-			fakeTransactions{},
-			fakeCurrencies{},
-			slog.New(slog.NewJSONHandler(&logs, nil)),
-		),
+		handler.NewHandler(handler.Services{
+			Accounts:     accounts,
+			Transactions: fakeTransactions{},
+			Withdrawals:  withdrawal.NewWithdrawalService(),
+			Currencies:   fakeCurrencies{},
+		}, slog.New(slog.NewJSONHandler(&logs, nil))),
 		handler.NewHealthCheckHandler(nil), // health routes are not exercised here,
+		nil,                                // nor idempotency (see middleware tests)
 	)
 
 	var req *http.Request
@@ -210,12 +212,6 @@ func TestStatusCodes(t *testing.T) {
 		},
 		{name: "discrepancies route", method: http.MethodGet, target: "/api/v1/discrepancies", want: http.StatusOK},
 		{name: "currencies route", method: http.MethodGet, target: "/api/v1/currencies", want: http.StatusOK},
-		{
-			name:   "unimplemented transaction lookup",
-			method: http.MethodGet,
-			target: "/api/v1/transactions/" + accountID,
-			want:   http.StatusNotImplemented,
-		},
 	}
 
 	for _, tt := range tests {
@@ -271,6 +267,129 @@ func TestUnexpectedErrors_AreLogged(t *testing.T) {
 			logged := strings.Contains(logs, `"msg":"request failed"`) && strings.Contains(logs, "connection refused")
 			if logged != tt.wantLogged {
 				t.Errorf("failure logged = %v, want %v; logs: %s", logged, tt.wantLogged, logs)
+			}
+		})
+	}
+}
+
+// TestScaffoldedRoutes_NotImplemented sends a valid request to every route
+// whose service is still a stub, through the real stub services, and expects
+// 501. Remove a case when its route is implemented (see docs/todo.md).
+func TestScaffoldedRoutes_NotImplemented(t *testing.T) {
+	t.Parallel()
+
+	discard := slog.New(slog.DiscardHandler)
+	router := httptransport.NewRouter(
+		handler.NewHandler(handler.Services{
+			Accounts:     account.NewAccountService(nil, nil, discard),
+			Transactions: transaction.NewTransactionService(nil, nil),
+			Withdrawals:  withdrawal.NewWithdrawalService(),
+			Currencies:   fakeCurrencies{},
+		}, discard),
+		handler.NewHealthCheckHandler(nil),
+		nil,
+	)
+
+	tests := []struct{ method, target, body string }{
+		{
+			method: http.MethodPost,
+			target: "/api/v1/conversions",
+			body: `{"reference":"fx-1","source_account_id":"` + accountID +
+				`","target_account_id":"` + uuid.NewString() + `","source_amount":100,"rate":"1.5"}`,
+		},
+		{method: http.MethodPost, target: "/api/v1/reconciliations"},
+		{
+			method: http.MethodPost,
+			target: "/api/v1/withdrawals",
+			body:   `{"account_id":"` + accountID + `","amount":100,"processor":"PAYSTACK","reference":"wd-1"}`,
+		},
+		{method: http.MethodGet, target: "/api/v1/withdrawals"},
+		{method: http.MethodGet, target: "/api/v1/withdrawals/" + accountID},
+		{
+			method: http.MethodPost,
+			target: "/api/v1/withdrawals/" + accountID + "/settle",
+			body:   `{"processor_reference":"psk-1"}`,
+		},
+		{method: http.MethodPost, target: "/api/v1/withdrawals/" + accountID + "/fail", body: `{"reason":"bank down"}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.target, func(t *testing.T) {
+			t.Parallel()
+
+			var body *strings.Reader
+			if tt.body != "" {
+				body = strings.NewReader(tt.body)
+			}
+
+			var req *http.Request
+			if body == nil {
+				req = httptest.NewRequestWithContext(t.Context(), tt.method, tt.target, nil)
+			} else {
+				req = httptest.NewRequestWithContext(t.Context(), tt.method, tt.target, body)
+			}
+
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusNotImplemented {
+				t.Errorf("status = %d, want 501; body: %s", rec.Code, rec.Body)
+			}
+		})
+	}
+}
+
+// TestRegisterV1Routes_IdempotentRoutes checks that exactly the POST routes
+// that move money pass through the idempotent middleware.
+func TestRegisterV1Routes_IdempotentRoutes(t *testing.T) {
+	t.Parallel()
+
+	const marker = "X-Test-Idempotent"
+
+	// mark answers by itself, so wrapped routes never reach the fake services.
+	mark := func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set(marker, "yes")
+			w.WriteHeader(http.StatusNoContent)
+		})
+	}
+
+	discard := slog.New(slog.DiscardHandler)
+	router := httptransport.RegisterV1Routes(handler.NewHandler(handler.Services{
+		Accounts:     &fakeAccounts{},
+		Transactions: fakeTransactions{},
+		Withdrawals:  withdrawal.NewWithdrawalService(),
+		Currencies:   fakeCurrencies{},
+	}, discard), mark)
+
+	tests := []struct {
+		method, target string
+		want           bool
+	}{
+		{method: http.MethodPost, target: "/transactions", want: true},
+		{method: http.MethodPost, target: "/transactions/" + accountID + "/reverse", want: true},
+		{method: http.MethodPost, target: "/conversions", want: true},
+		{method: http.MethodPost, target: "/withdrawals", want: true},
+		{method: http.MethodGet, target: "/transactions"},
+		{method: http.MethodPost, target: "/accounts"},
+		{method: http.MethodPost, target: "/withdrawals/" + accountID + "/settle"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.target, func(t *testing.T) {
+			t.Parallel()
+
+			rec := httptest.NewRecorder()
+
+			func() {
+				// Unwrapped routes reach the fakes, whose unstubbed methods panic.
+				defer func() { _ = recover() }()
+
+				router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), tt.method, tt.target, strings.NewReader("{}")))
+			}()
+
+			if got := rec.Header().Get(marker) == "yes"; got != tt.want {
+				t.Errorf("wrapped = %v, want %v", got, tt.want)
 			}
 		})
 	}

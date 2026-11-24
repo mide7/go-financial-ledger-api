@@ -36,3 +36,19 @@ func TestParseEntryType(t *testing.T) {
 		})
 	}
 }
+
+func TestEntryType_Opposite(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct{ in, want EntryType }{
+		{in: EntryTypeDebit, want: EntryTypeCredit},
+		{in: EntryTypeCredit, want: EntryTypeDebit},
+		{in: "BOGUS", want: "BOGUS"},
+	}
+
+	for _, tt := range tests {
+		if got := tt.in.Opposite(); got != tt.want {
+			t.Errorf("%q.Opposite() = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

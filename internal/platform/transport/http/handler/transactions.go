@@ -37,10 +37,19 @@ func (h *handler) ListTransactions(w http.ResponseWriter, r *http.Request) {
 		})
 }
 
-// ReverseTransaction reverses a transaction. It answers with a message and no body.
+// ReverseTransaction posts a reversal of the transaction in the path and
+// returns the reversal.
 func (h *handler) ReverseTransaction(w http.ResponseWriter, r *http.Request) {
-	h.serve(w, r, endpoint{sources: fromPath, status: http.StatusOK, message: "transaction reversed"},
-		func(ctx context.Context, req dto.ReverseTransactionDTO) (any, error) {
-			return nil, h.transactionService.ReverseTransaction(ctx, req.ID)
+	h.serve(w, r, endpoint{sources: fromPathBody, status: http.StatusCreated, message: "transaction reversed"},
+		func(ctx context.Context, req dto.ReverseTransactionDTO) (*transaction.Transaction, error) {
+			return h.transactionService.ReverseTransaction(ctx, req.ToDomainParams())
+		})
+}
+
+// CreateConversion converts funds between two accounts in different currencies.
+func (h *handler) CreateConversion(w http.ResponseWriter, r *http.Request) {
+	h.serve(w, r, endpoint{status: http.StatusCreated, message: "conversion created"},
+		func(ctx context.Context, req dto.CreateConversionDTO) (*transaction.Conversion, error) {
+			return h.transactionService.CreateConversion(ctx, req.ToDomainParams())
 		})
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/mide7/go-financial-ledger-api/internal/domain"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 )
@@ -13,7 +15,25 @@ import (
 type fakeRepo struct {
 	Repository
 
-	created []CreateTransactionParams
+	created  []CreateTransactionParams
+	listed   []ListTransactionsParams
+	fetched  []uuid.UUID
+	reversed []ReverseTransactionParams
+}
+
+func (f *fakeRepo) Reverse(_ context.Context, p ReverseTransactionParams) (*Transaction, error) {
+	f.reversed = append(f.reversed, p)
+	return &Transaction{Reference: p.Reference, Type: TypeReversal}, nil
+}
+
+func (f *fakeRepo) GetByID(_ context.Context, id uuid.UUID) (*Transaction, error) {
+	f.fetched = append(f.fetched, id)
+	return &Transaction{ID: id}, nil
+}
+
+func (f *fakeRepo) List(_ context.Context, p ListTransactionsParams) ([]Transaction, error) {
+	f.listed = append(f.listed, p)
+	return []Transaction{}, nil
 }
 
 func (f *fakeRepo) Create(_ context.Context, p CreateTransactionParams) (*Transaction, error) {
@@ -56,6 +76,11 @@ func TestTransactionService_CreateTransaction(t *testing.T) {
 			wantErr: ErrUnbalancedTransaction,
 		},
 		{
+			name:    "reversal type is reserved",
+			params:  CreateTransactionParams{Reference: "r4", Type: TypeReversal, Currency: currency.NGN, Entries: balanced},
+			wantErr: ErrReservedType,
+		},
+		{
 			name:    "inactive currency",
 			params:  CreateTransactionParams{Reference: "r3", Currency: currency.USD, Entries: balanced},
 			wantErr: ErrInvalidCurrency,
@@ -84,7 +109,107 @@ func TestTransactionService_CreateTransaction(t *testing.T) {
 			if got == nil || got.Reference != tt.params.Reference {
 				t.Errorf("CreateTransaction() = %+v, want reference %q", got, tt.params.Reference)
 			}
+
+			if saved := string(repo.created[0].Metadata); saved != "{}" {
+				t.Errorf("stored metadata = %s, want {} when omitted", saved)
+			}
 		})
+	}
+}
+
+func TestTransactionService_GetTransactionDetails(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeRepo{}
+	id := uuid.New()
+
+	got, err := newTestService(repo).GetTransactionDetails(t.Context(), id)
+	if err != nil {
+		t.Fatalf("GetTransactionDetails() error = %v", err)
+	}
+
+	if got.ID != id || len(repo.fetched) != 1 || repo.fetched[0] != id {
+		t.Errorf("GetTransactionDetails() = %+v, fetched %v, want id %s", got, repo.fetched, id)
+	}
+}
+
+func TestTransactionService_ListTransactions(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+
+	tests := []struct {
+		name      string
+		params    ListTransactionsParams
+		wantLimit int32
+		wantErr   error
+	}{
+		{name: "omitted limit uses default", wantLimit: DefaultPageLimit},
+		{name: "negative limit uses default", params: ListTransactionsParams{Limit: -1}, wantLimit: DefaultPageLimit},
+		{name: "limit within bounds is kept", params: ListTransactionsParams{Limit: 7}, wantLimit: 7},
+		{name: "limit is capped", params: ListTransactionsParams{Limit: 500}, wantLimit: MaxPageLimit},
+		{
+			name:      "start before end",
+			params:    ListTransactionsParams{StartDate: now, EndDate: now.Add(time.Hour)},
+			wantLimit: DefaultPageLimit,
+		},
+		{name: "only start date", params: ListTransactionsParams{StartDate: now}, wantLimit: DefaultPageLimit},
+		{name: "only end date", params: ListTransactionsParams{EndDate: now}, wantLimit: DefaultPageLimit},
+		{
+			name:    "start after end",
+			params:  ListTransactionsParams{StartDate: now.Add(time.Hour), EndDate: now},
+			wantErr: ErrInvalidDateRange,
+		},
+		{
+			name:    "start equal to end",
+			params:  ListTransactionsParams{StartDate: now, EndDate: now},
+			wantErr: ErrInvalidDateRange,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := &fakeRepo{}
+
+			_, err := newTestService(repo).ListTransactions(t.Context(), tt.params)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("ListTransactions() error = %v, want %v", err, tt.wantErr)
+			}
+
+			if tt.wantErr != nil {
+				if len(repo.listed) != 0 {
+					t.Error("rejected listing was passed to the repository")
+				}
+
+				return
+			}
+
+			if len(repo.listed) != 1 || repo.listed[0].Limit != tt.wantLimit {
+				t.Errorf("repository got %+v, want limit %d", repo.listed, tt.wantLimit)
+			}
+		})
+	}
+}
+
+func TestTransactionService_ReverseTransaction(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeRepo{}
+	params := ReverseTransactionParams{ID: uuid.New(), Reference: "rev-1", Reason: "duplicate charge"}
+
+	got, err := newTestService(repo).ReverseTransaction(t.Context(), params)
+	if err != nil {
+		t.Fatalf("ReverseTransaction() error = %v", err)
+	}
+
+	if len(repo.reversed) != 1 || repo.reversed[0] != params {
+		t.Errorf("repository got %+v, want %+v", repo.reversed, params)
+	}
+
+	if got.Type != TypeReversal {
+		t.Errorf("ReverseTransaction() type = %q, want %q", got.Type, TypeReversal)
 	}
 }
 
@@ -99,16 +224,9 @@ func TestTransactionService_Unimplemented(t *testing.T) {
 		name string
 		call func() error
 	}{
-		{name: "GetTransactionDetails", call: func() error {
-			_, err := svc.GetTransactionDetails(t.Context(), "id")
+		{name: "CreateConversion", call: func() error {
+			_, err := svc.CreateConversion(t.Context(), CreateConversionParams{})
 			return err
-		}},
-		{name: "ListTransactions", call: func() error {
-			_, err := svc.ListTransactions(t.Context(), ListTransactionsParams{})
-			return err
-		}},
-		{name: "ReverseTransaction", call: func() error {
-			return svc.ReverseTransaction(t.Context(), "id")
 		}},
 	}
 

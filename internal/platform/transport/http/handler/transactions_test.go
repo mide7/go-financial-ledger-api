@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -14,13 +15,18 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handler"
 )
 
+const (
+	otherID     = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c"
+	reverseBody = `{"reference":"rev-1","reason":"duplicate"}`
+)
+
 // TestTransactionHandlers pins each transaction endpoint's observable contract,
 // as TestAccountHandlers does for accounts.
 func TestTransactionHandlers(t *testing.T) {
 	t.Parallel()
 
 	accountID := uuid.MustParse(testID)
-	createBody := `{"reference":"r1","type":"FUND","currency":"NGN","description":"d","metadata":"e30=",` +
+	createBody := `{"reference":"r1","type":"FUND","currency":"NGN","description":"d","metadata":{"order":7},` +
 		`"transaction_date":"2026-01-02T03:04:05Z","entries":[` +
 		`{"account_id":"` + testID + `","type":"DEBIT","amount":5},` +
 		`{"account_id":"` + testID + `","type":"CREDIT","amount":5}]}`
@@ -29,7 +35,7 @@ func TestTransactionHandlers(t *testing.T) {
 		Type:            "FUND",
 		Currency:        currency.NGN,
 		Description:     "d",
-		Metadata:        []byte("{}"),
+		Metadata:        json.RawMessage(`{"order":7}`),
 		TransactionDate: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		Entries: []transaction.EntryParams{
 			{AccountID: accountID, Type: domain.EntryTypeDebit, Amount: 5},
@@ -37,16 +43,7 @@ func TestTransactionHandlers(t *testing.T) {
 		},
 	}
 
-	tests := []struct {
-		name        string
-		endpoint    func(handler.Handler) http.HandlerFunc
-		req         request
-		serviceErr  error
-		wantStatus  int
-		wantMessage string
-		wantParams  any
-		wantNoBody  bool
-	}{
+	tests := []txnCase{
 		{
 			name:        "create",
 			endpoint:    func(h handler.Handler) http.HandlerFunc { return h.CreateTransaction },
@@ -74,7 +71,7 @@ func TestTransactionHandlers(t *testing.T) {
 			endpoint:   func(h handler.Handler) http.HandlerFunc { return h.GetTransactionDetails },
 			req:        request{method: http.MethodGet, target: txnPath + "/" + testID, pathID: testID},
 			wantStatus: http.StatusOK,
-			wantParams: testID,
+			wantParams: accountID,
 		},
 		{
 			name:       "details rejects malformed ID",
@@ -83,16 +80,29 @@ func TestTransactionHandlers(t *testing.T) {
 			wantStatus: http.StatusUnprocessableEntity,
 		},
 		{
-			name:       "list",
-			endpoint:   func(h handler.Handler) http.HandlerFunc { return h.ListTransactions },
-			req:        request{method: http.MethodGet, target: txnPath + "?page=3&limit=10&type=FUND&status=POSTED"},
+			name:     "list",
+			endpoint: func(h handler.Handler) http.HandlerFunc { return h.ListTransactions },
+			req: request{
+				method: http.MethodGet,
+				target: txnPath + "?account_id=" + testID + "&reference=r1&type=FUND&currency=NGN" +
+					"&start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z&cursor=" + testID + "&limit=10",
+			},
 			wantStatus: http.StatusOK,
-			wantParams: transaction.ListTransactionsParams{Page: 3, Limit: 10, Type: "FUND", Status: "POSTED"},
+			wantParams: transaction.ListTransactionsParams{
+				AccountID: uuid.NullUUID{UUID: accountID, Valid: true},
+				Reference: "r1",
+				Type:      "FUND",
+				Currency:  currency.NGN,
+				StartDate: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+				EndDate:   time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC),
+				Cursor:    uuid.NullUUID{UUID: accountID, Valid: true},
+				Limit:     10,
+			},
 		},
 		{
-			name:       "list rejects unknown status",
+			name:       "list rejects lowercase currency",
 			endpoint:   func(h handler.Handler) http.HandlerFunc { return h.ListTransactions },
-			req:        request{method: http.MethodGet, target: txnPath + "?status=LOST"},
+			req:        request{method: http.MethodGet, target: txnPath + "?currency=ngn"},
 			wantStatus: http.StatusUnprocessableEntity,
 		},
 		{
@@ -103,16 +113,25 @@ func TestTransactionHandlers(t *testing.T) {
 			wantStatus: http.StatusNotImplemented,
 			wantParams: transaction.ListTransactionsParams{},
 		},
-		{
-			name:        "reverse",
-			endpoint:    func(h handler.Handler) http.HandlerFunc { return h.ReverseTransaction },
-			req:         request{method: http.MethodPost, target: txnPath + "/" + testID + "/reverse", pathID: testID},
-			wantStatus:  http.StatusOK,
-			wantMessage: "transaction reversed",
-			wantParams:  testID,
-			wantNoBody:  true,
-		},
 	}
+
+	runTxnCases(t, tests)
+}
+
+// txnCase pins one transaction endpoint call, as accountCase does for accounts.
+type txnCase struct {
+	name        string
+	endpoint    func(handler.Handler) http.HandlerFunc
+	req         request
+	serviceErr  error
+	wantStatus  int
+	wantMessage string
+	wantParams  any
+	wantNoBody  bool
+}
+
+func runTxnCases(t *testing.T, tests []txnCase) {
+	t.Helper()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -138,6 +157,58 @@ func TestTransactionHandlers(t *testing.T) {
 	}
 }
 
+func TestTransactionHandlers_ReverseAndConvert(t *testing.T) {
+	t.Parallel()
+
+	accountID := uuid.MustParse(testID)
+
+	runTxnCases(t, []txnCase{
+		{
+			name:     "reverse",
+			endpoint: func(h handler.Handler) http.HandlerFunc { return h.ReverseTransaction },
+			req: request{
+				method: http.MethodPost,
+				target: txnPath + "/" + testID + "/reverse",
+				pathID: testID,
+				body:   reverseBody,
+			},
+			wantStatus:  http.StatusCreated,
+			wantMessage: "transaction reversed",
+			wantParams:  transaction.ReverseTransactionParams{ID: accountID, Reference: "rev-1", Reason: "duplicate"},
+		},
+		{
+			name:       "reverse requires reference and reason",
+			endpoint:   func(h handler.Handler) http.HandlerFunc { return h.ReverseTransaction },
+			req:        request{method: http.MethodPost, target: "/x", pathID: testID, body: `{}`},
+			wantStatus: http.StatusUnprocessableEntity,
+		},
+		{
+			name:       "reverse maps already reversed",
+			endpoint:   func(h handler.Handler) http.HandlerFunc { return h.ReverseTransaction },
+			req:        request{method: http.MethodPost, target: "/x", pathID: testID, body: reverseBody},
+			serviceErr: transaction.ErrAlreadyReversed,
+			wantStatus: http.StatusConflict,
+			wantParams: transaction.ReverseTransactionParams{ID: accountID, Reference: "rev-1", Reason: "duplicate"},
+		},
+		{
+			name:     "conversion",
+			endpoint: func(h handler.Handler) http.HandlerFunc { return h.CreateConversion },
+			req: request{method: http.MethodPost, target: "/conversions", body: `{"reference":"fx-1",` +
+				`"source_account_id":"` + testID + `","target_account_id":"` + otherID + `",` +
+				`"source_amount":100,"rate":"0.00065"}`},
+			wantStatus:  http.StatusCreated,
+			wantMessage: "conversion created",
+			wantParams: transaction.CreateConversionParams{
+				Reference:       "fx-1",
+				SourceAccountID: accountID,
+				TargetAccountID: uuid.MustParse(otherID),
+				SourceAmount:    100,
+				Rate:            "0.00065",
+			},
+		},
+	})
+}
+
 // TestTransactionHandlers_Errors runs the path-ID transaction endpoints
 // through the error matrix.
 func TestTransactionHandlers_Errors(t *testing.T) {
@@ -160,7 +231,7 @@ func TestTransactionHandlers_Errors(t *testing.T) {
 				got := do(
 					t,
 					ep.endpoint(newHandler(&fakeAccounts{}, txns)),
-					request{method: http.MethodPost, target: "/x", pathID: cmp.Or(ec.pathID, testID)},
+					request{method: http.MethodPost, target: "/x", pathID: cmp.Or(ec.pathID, testID), body: reverseBody},
 				)
 
 				assertResponse(t, got, ec.wantStatus, "")

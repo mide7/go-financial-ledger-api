@@ -7,8 +7,10 @@ FROM new_entries ne
     JOIN transactions t ON ne.transaction_id = t.id
 WHERE a.currency != t.currency
 LIMIT 1;
+-- Custom SQLSTATEs (class LD, "ledger") let the application map violations
+-- without matching message text: LD001 currency mismatch, LD002 unbalanced.
 IF invalid_tx IS NOT NULL THEN RAISE EXCEPTION 'Currency Mismatch: Transaction % has entries with account currencies that do not match the transaction header currency.',
-invalid_tx;
+invalid_tx USING ERRCODE = 'LD001';
 END IF;
 -- Check 2: Ensure net balance per transaction_id strictly equals zero
 SELECT e.transaction_id INTO invalid_tx
@@ -27,7 +29,7 @@ HAVING SUM(
     ) != 0
 LIMIT 1;
 IF invalid_tx IS NOT NULL THEN RAISE EXCEPTION 'Double-Entry Violation: Transaction % is unbalanced.',
-invalid_tx;
+invalid_tx USING ERRCODE = 'LD002';
 END IF;
 RETURN NULL;
 END;

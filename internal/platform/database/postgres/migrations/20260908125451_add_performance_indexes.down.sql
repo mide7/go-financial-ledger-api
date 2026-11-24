@@ -4,6 +4,7 @@ DROP INDEX IF EXISTS idx_idempotency_active;
 DROP INDEX IF EXISTS idx_idempotency_expires_at;
 -- Transaction Indexes
 DROP INDEX IF EXISTS idx_transactions_metadata;
+DROP INDEX IF EXISTS uq_transactions_one_reversal;
 DROP INDEX IF EXISTS idx_transactions_parent_id;
 DROP INDEX IF EXISTS idx_transactions_currency_created_at;
 -- Covering Index for Fast Point-in-Time Balance Calculations

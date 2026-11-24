@@ -95,10 +95,10 @@ func TestAccountHandlers_BodyAndQuery(t *testing.T) {
 			endpoint: list,
 			req: request{
 				method: http.MethodGet,
-				target: accountsPath + "?page=2&limit=5&currency=NGN&type=USER_WALLET",
+				target: accountsPath + "?page=2&limit=5&currency=NGN&type=USER_WALLET&owner_id=u1",
 			},
 			wantStatus: http.StatusOK,
-			wantParams: account.ListAccountsParams{Page: 2, Limit: 5, Currency: ngn, Type: "USER_WALLET"},
+			wantParams: account.ListAccountsParams{Page: 2, Limit: 5, Currency: ngn, Type: "USER_WALLET", OwnerID: "u1"},
 		},
 		{
 			name:       "list rejects limit above 100",

@@ -8,6 +8,7 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/withdrawal"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/httputil"
 )
 
@@ -38,6 +39,17 @@ type Handler interface {
 	GetTransactionDetails(w http.ResponseWriter, r *http.Request)
 	ListTransactions(w http.ResponseWriter, r *http.Request)
 	ReverseTransaction(w http.ResponseWriter, r *http.Request)
+	CreateConversion(w http.ResponseWriter, r *http.Request)
+
+	// Reconciliation jobs
+	ReconcileAllAccounts(w http.ResponseWriter, r *http.Request)
+
+	// Withdrawals
+	CreateWithdrawal(w http.ResponseWriter, r *http.Request)
+	GetWithdrawal(w http.ResponseWriter, r *http.Request)
+	ListWithdrawals(w http.ResponseWriter, r *http.Request)
+	SettleWithdrawal(w http.ResponseWriter, r *http.Request)
+	FailWithdrawal(w http.ResponseWriter, r *http.Request)
 }
 
 // HealthCheckHandler serves the /health route.
@@ -45,25 +57,30 @@ type HealthCheckHandler interface {
 	HealthCheck(w http.ResponseWriter, r *http.Request)
 }
 
+// Services are the use cases a Handler delegates to. All fields are required.
+type Services struct {
+	Accounts     account.Service
+	Transactions transaction.Service
+	Withdrawals  withdrawal.Service
+	Currencies   currency.Registry
+}
+
 type handler struct {
 	accountService     account.Service
 	transactionService transaction.Service
+	withdrawalService  withdrawal.Service
 	currencies         currency.Registry
 	log                *slog.Logger
 }
 
-// NewHandler returns a Handler that delegates to the given services and
-// currency registry, and logs unexpected (500) errors to log.
-func NewHandler(
-	accountService account.Service,
-	transactionService transaction.Service,
-	currencies currency.Registry,
-	log *slog.Logger,
-) Handler {
+// NewHandler returns a Handler that delegates to svc and logs unexpected (500)
+// errors to log.
+func NewHandler(svc Services, log *slog.Logger) Handler {
 	return &handler{
-		accountService:     accountService,
-		transactionService: transactionService,
-		currencies:         currencies,
+		accountService:     svc.Accounts,
+		transactionService: svc.Transactions,
+		withdrawalService:  svc.Withdrawals,
+		currencies:         svc.Currencies,
 		log:                log,
 	}
 }

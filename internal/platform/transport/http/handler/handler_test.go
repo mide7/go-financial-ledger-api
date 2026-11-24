@@ -15,6 +15,7 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/withdrawal"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handler"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/middleware"
 )
@@ -114,6 +115,11 @@ func (f *fakeAccounts) ListAccountStatusHistory(
 	return list, f.record(p, list)
 }
 
+func (f *fakeAccounts) ReconcileAllAccounts(context.Context) (*account.ReconciliationRun, error) {
+	r := &account.ReconciliationRun{AccountsChecked: 3, StartedAt: fixedTime, FinishedAt: fixedTime}
+	return r, f.record(struct{}{}, r)
+}
+
 func (f *fakeAccounts) ListUnresolvedDiscrepancies(context.Context) ([]account.DiscrepancyRecord, error) {
 	list := []account.DiscrepancyRecord{{ID: uuid.MustParse(testID), DiscrepancyAmount: 2, DetectedAt: fixedTime}}
 	return list, f.record(struct{}{}, list)
@@ -166,8 +172,8 @@ func (f *fakeTransactions) CreateTransaction(
 	return t, f.record(p, t)
 }
 
-func (f *fakeTransactions) GetTransactionDetails(_ context.Context, id string) (*transaction.Transaction, error) {
-	t := &transaction.Transaction{ID: uuid.MustParse(id), CreatedAt: fixedTime}
+func (f *fakeTransactions) GetTransactionDetails(_ context.Context, id uuid.UUID) (*transaction.Transaction, error) {
+	t := &transaction.Transaction{ID: id, CreatedAt: fixedTime}
 	return t, f.record(id, t)
 }
 
@@ -179,8 +185,20 @@ func (f *fakeTransactions) ListTransactions(
 	return list, f.record(p, list)
 }
 
-func (f *fakeTransactions) ReverseTransaction(_ context.Context, id string) error {
-	return f.record(id, nil)
+func (f *fakeTransactions) ReverseTransaction(
+	_ context.Context,
+	p transaction.ReverseTransactionParams,
+) (*transaction.Transaction, error) {
+	t := &transaction.Transaction{ID: uuid.MustParse(testID), Reference: p.Reference, CreatedAt: fixedTime}
+	return t, f.record(p, t)
+}
+
+func (f *fakeTransactions) CreateConversion(
+	_ context.Context,
+	p transaction.CreateConversionParams,
+) (*transaction.Conversion, error) {
+	c := &transaction.Conversion{Reference: p.Reference, Rate: p.Rate}
+	return c, f.record(p, c)
 }
 
 // request describes one call to a handler method.
@@ -239,7 +257,12 @@ func encoded(t *testing.T, v any) string {
 }
 
 func newHandler(accounts *fakeAccounts, txns *fakeTransactions) handler.Handler {
-	return handler.NewHandler(accounts, txns, fakeCurrencies{}, slog.New(slog.DiscardHandler))
+	return handler.NewHandler(handler.Services{
+		Accounts:     accounts,
+		Transactions: txns,
+		Withdrawals:  withdrawal.NewWithdrawalService(),
+		Currencies:   fakeCurrencies{},
+	}, slog.New(slog.DiscardHandler))
 }
 
 // errorCase is one way an endpoint can fail and the status it must produce.

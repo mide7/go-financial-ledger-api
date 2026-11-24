@@ -31,6 +31,19 @@ func ParseEntryType(s string) (EntryType, error) {
 	}
 }
 
+// Opposite returns the other side of the ledger: CREDIT for DEBIT and DEBIT
+// for CREDIT. An unknown type is returned unchanged.
+func (t EntryType) Opposite() EntryType {
+	switch t {
+	case EntryTypeDebit:
+		return EntryTypeCredit
+	case EntryTypeCredit:
+		return EntryTypeDebit
+	default:
+		return t
+	}
+}
+
 // IsValid reports whether t is a known entry type.
 func (t EntryType) IsValid() bool {
 	switch t {

@@ -11,6 +11,8 @@ import (
 )
 
 type Querier interface {
+	// Stores the response for a claimed key. Status is COMPLETED or FAILED.
+	CompleteIdempotencyRecord(ctx context.Context, arg CompleteIdempotencyRecordParams) (int64, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	// The stored balance is positive in the account's normal-balance direction
 	// (account_types.normal_balance), so GetAccountBalance and ReconcileAccount can
@@ -18,6 +20,7 @@ type Querier interface {
 	CreateBalanceSnapshot(ctx context.Context, accountID uuid.UUID) (BalanceSnapshot, error)
 	CreateEntries(ctx context.Context, arg []CreateEntriesParams) (int64, error)
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
+	DeleteExpiredIdempotencyRecords(ctx context.Context) (int64, error)
 	// Balances are positive in the account's normal-balance direction
 	// (account_types.normal_balance), matching snapshots and reconciliation.
 	GetAccountBalance(ctx context.Context, accountID uuid.UUID) (GetAccountBalanceRow, error)
@@ -28,15 +31,34 @@ type Querier interface {
 	// direction; total_debits and total_credits are unsigned sums.
 	GetAccountStatementSummary(ctx context.Context, arg GetAccountStatementSummaryParams) (GetAccountStatementSummaryRow, error)
 	GetAccountStatus(ctx context.Context, accountID uuid.UUID) (string, error)
+	GetIdempotencyRecord(ctx context.Context, key string) (IdempotencyRecord, error)
 	GetLatestBalanceSnapshot(ctx context.Context, accountID uuid.UUID) (BalanceSnapshot, error)
+	// The reversal posted for a transaction, if any.
+	GetReversalOf(ctx context.Context, transactionID uuid.NullUUID) (Transaction, error)
+	GetTransactionByID(ctx context.Context, id uuid.UUID) (Transaction, error)
 	InsertDiscrepancyRecord(ctx context.Context, arg InsertDiscrepancyRecordParams) (DiscrepancyRecord, error)
+	// Claims key for a new request. Returns no row when the key already exists.
+	InsertIdempotencyRecord(ctx context.Context, arg InsertIdempotencyRecordParams) (IdempotencyRecord, error)
 	InsertStatusHistory(ctx context.Context, arg InsertStatusHistoryParams) (AccountStatusHistory, error)
+	// Keyset page of account ids, for batch jobs such as reconciling every account.
+	ListAccountIDsAfter(ctx context.Context, arg ListAccountIDsAfterParams) ([]uuid.UUID, error)
 	ListAccountStatementEntries(ctx context.Context, arg ListAccountStatementEntriesParams) ([]ListAccountStatementEntriesRow, error)
 	ListAccountStatusHistory(ctx context.Context, arg ListAccountStatusHistoryParams) ([]AccountStatusHistory, error)
 	ListAccounts(ctx context.Context, arg ListAccountsParams) ([]Account, error)
 	ListAccountsByOwnerID(ctx context.Context, ownerID string) ([]Account, error)
 	ListActiveCurrencies(ctx context.Context) ([]ListActiveCurrenciesRow, error)
+	ListEntriesByTransactionID(ctx context.Context, transactionID uuid.UUID) ([]Entry, error)
+	// Newest first. The cursor is the id of the last row on the previous page;
+	// ids are UUIDv7, so id order is creation order. Filters are optional.
+	ListTransactions(ctx context.Context, arg ListTransactionsParams) ([]Transaction, error)
 	ListUnresolvedDiscrepancies(ctx context.Context) ([]DiscrepancyRecord, error)
+	// Share-locks the accounts a transaction posts to, so a concurrent status
+	// change (which takes FOR UPDATE) waits until the posting commits. Ordered by
+	// id so concurrent postings lock in the same order and cannot deadlock.
+	LockAccountsForPosting(ctx context.Context, accountIds []uuid.UUID) ([]LockAccountsForPostingRow, error)
+	// Takes over an existing key for a new attempt when its record has expired
+	// (any request) or FAILED for the same request. Returns no row otherwise.
+	ReclaimIdempotencyRecord(ctx context.Context, arg ReclaimIdempotencyRecordParams) (IdempotencyRecord, error)
 	ReconcileAccount(ctx context.Context, accountID uuid.UUID) (ReconcileAccountRow, error)
 	ResolveDiscrepancy(ctx context.Context, arg ResolveDiscrepancyParams) (int64, error)
 	SeedAccountType(ctx context.Context, arg SeedAccountTypeParams) error

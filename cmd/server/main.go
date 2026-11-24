@@ -16,14 +16,21 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/config"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/withdrawal"
 	"github.com/mide7/go-financial-ledger-api/internal/logger"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/repository"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/sqlc"
+	"github.com/mide7/go-financial-ledger-api/internal/platform/idempotency"
 	httptransport "github.com/mide7/go-financial-ledger-api/internal/platform/transport/http"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handler"
+	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/middleware"
 )
 
-const serviceName = "ledger-api"
+const (
+	serviceName = "ledger-api"
+	// idempotencyPurgeInterval is how often expired idempotency records are deleted.
+	idempotencyPurgeInterval = time.Hour
+)
 
 func main() {
 	os.Exit(start())
@@ -93,11 +100,22 @@ func run(cfg *config.Config, log *slog.Logger) error {
 
 	accountService := account.NewAccountService(accountRepository, currencyRegistry, log)
 	transactionService := transaction.NewTransactionService(transactionRepository, currencyRegistry)
+	withdrawalService := withdrawal.NewWithdrawalService()
 
-	apiHandler := handler.NewHandler(accountService, transactionService, currencyRegistry, log)
+	apiHandler := handler.NewHandler(handler.Services{
+		Accounts:     accountService,
+		Transactions: transactionService,
+		Withdrawals:  withdrawalService,
+		Currencies:   currencyRegistry,
+	}, log)
 	healthCheckHandler := handler.NewHealthCheckHandler(pool)
 
-	router := httptransport.NewRouter(apiHandler, healthCheckHandler)
+	idempotencyStore := repository.NewIdempotencyStore(queries)
+	idempotent := middleware.Idempotency(idempotencyStore, cfg.IdempotencyTTL, log)
+
+	go purgeIdempotencyRecords(ctx, idempotencyStore, idempotencyPurgeInterval, log)
+
+	router := httptransport.NewRouter(apiHandler, healthCheckHandler, idempotent)
 	httpServer := httptransport.NewServer(cfg.Port, router, log)
 
 	serverErr := make(chan error, 1)
@@ -125,4 +143,32 @@ func run(cfg *config.Config, log *slog.Logger) error {
 	log.Info("✅ graceful shutdown complete")
 
 	return nil
+}
+
+// purgeIdempotencyRecords deletes expired idempotency records every interval
+// until ctx is done. A failed purge is logged and retried on the next tick;
+// expired records are reclaimable anyway, so a missed purge only costs space.
+func purgeIdempotencyRecords(
+	ctx context.Context,
+	store idempotency.Store,
+	interval time.Duration,
+	log *slog.Logger,
+) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			n, err := store.DeleteExpired(ctx)
+			if err != nil {
+				log.WarnContext(ctx, "purge expired idempotency records", "err", err)
+				continue
+			}
+
+			log.DebugContext(ctx, "purged expired idempotency records", "count", n)
+		}
+	}
 }

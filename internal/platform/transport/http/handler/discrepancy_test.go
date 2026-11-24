@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/withdrawal"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handler"
 )
 
@@ -64,7 +65,12 @@ func TestListCurrencies(t *testing.T) {
 		{Code: currency.EUR, Name: "Euro", Exponent: 2, IsActive: true},
 		{Code: currency.NGN, Name: "Naira", Exponent: 2, IsActive: true},
 	}
-	h := handler.NewHandler(&fakeAccounts{}, &fakeTransactions{}, fakeCurrencies{list: list}, slog.New(slog.DiscardHandler))
+	h := handler.NewHandler(handler.Services{
+		Accounts:     &fakeAccounts{},
+		Transactions: &fakeTransactions{},
+		Withdrawals:  withdrawal.NewWithdrawalService(),
+		Currencies:   fakeCurrencies{list: list},
+	}, slog.New(slog.DiscardHandler))
 
 	got := do(t, h.ListCurrencies, request{method: http.MethodGet, target: "/currencies"})
 
@@ -73,4 +79,17 @@ func TestListCurrencies(t *testing.T) {
 	if want := encoded(t, list); got.body != want {
 		t.Errorf("body = %s, want %s", got.body, want)
 	}
+}
+
+func TestReconcileAllAccounts(t *testing.T) {
+	t.Parallel()
+
+	runAccountCases(t, []accountCase{{
+		name:        "reconcile all",
+		endpoint:    func(h handler.Handler) http.HandlerFunc { return h.ReconcileAllAccounts },
+		req:         request{method: http.MethodPost, target: "/reconciliations"},
+		wantStatus:  http.StatusOK,
+		wantMessage: "reconciliation run finished",
+		wantParams:  struct{}{},
+	}})
 }

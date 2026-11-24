@@ -195,7 +195,7 @@ period_activity AS (
         )
         AND (
             sqlc.narg(end_date)::timestamptz IS NULL
-            OR created_at <= sqlc.narg('end_date')
+            OR created_at < sqlc.narg('end_date')
         )
 )
 SELECT ai.account_id,
@@ -369,3 +369,21 @@ SELECT ac.account_id,
 FROM account_ctx ac
     CROSS JOIN ledger l
     LEFT JOIN latest_snapshot ls ON true;
+-- name: LockAccountsForPosting :many
+-- Share-locks the accounts a transaction posts to, so a concurrent status
+-- change (which takes FOR UPDATE) waits until the posting commits. Ordered by
+-- id so concurrent postings lock in the same order and cannot deadlock.
+SELECT id,
+    status
+FROM accounts
+WHERE id = ANY(sqlc.arg('account_ids')::uuid [])
+ORDER BY id FOR SHARE;
+
+-- name: ListAccountIDsAfter :many
+-- Keyset page of account ids, for batch jobs such as reconciling every account.
+SELECT id
+FROM accounts
+WHERE sqlc.narg('after')::uuid IS NULL
+    OR id > sqlc.narg('after')::uuid
+ORDER BY id
+LIMIT sqlc.arg('limit')::int;

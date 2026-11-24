@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type CreateEntriesParams struct {
@@ -66,4 +67,145 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const getReversalOf = `-- name: GetReversalOf :one
+SELECT id, reference, type, currency, parent_transaction_id, description, metadata, transaction_date, created_at
+FROM transactions
+WHERE parent_transaction_id = $1
+    AND type = 'REVERSAL'
+LIMIT 1
+`
+
+// The reversal posted for a transaction, if any.
+func (q *Queries) GetReversalOf(ctx context.Context, transactionID uuid.NullUUID) (Transaction, error) {
+	row := q.db.QueryRow(ctx, getReversalOf, transactionID)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.Reference,
+		&i.Type,
+		&i.Currency,
+		&i.ParentTransactionID,
+		&i.Description,
+		&i.Metadata,
+		&i.TransactionDate,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getTransactionByID = `-- name: GetTransactionByID :one
+SELECT id, reference, type, currency, parent_transaction_id, description, metadata, transaction_date, created_at
+FROM transactions
+WHERE id = $1
+`
+
+func (q *Queries) GetTransactionByID(ctx context.Context, id uuid.UUID) (Transaction, error) {
+	row := q.db.QueryRow(ctx, getTransactionByID, id)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.Reference,
+		&i.Type,
+		&i.Currency,
+		&i.ParentTransactionID,
+		&i.Description,
+		&i.Metadata,
+		&i.TransactionDate,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const listTransactions = `-- name: ListTransactions :many
+SELECT t.id, t.reference, t.type, t.currency, t.parent_transaction_id, t.description, t.metadata, t.transaction_date, t.created_at
+FROM transactions t
+WHERE (
+        $1::uuid IS NULL
+        OR EXISTS (
+            SELECT 1
+            FROM entries e
+            WHERE e.transaction_id = t.id
+                AND e.account_id = $1::uuid
+        )
+    )
+    AND (
+        $2::text IS NULL
+        OR t.reference = $2::text
+    )
+    AND (
+        $3::text IS NULL
+        OR t.type = $3::text
+    )
+    AND (
+        $4::text IS NULL
+        OR t.currency = $4::text
+    )
+    AND (
+        $5::timestamptz IS NULL
+        OR t.created_at >= $5::timestamptz
+    )
+    AND (
+        $6::timestamptz IS NULL
+        OR t.created_at < $6::timestamptz
+    )
+    AND (
+        $7::uuid IS NULL
+        OR t.id < $7::uuid
+    )
+ORDER BY t.id DESC
+LIMIT $8::int
+`
+
+type ListTransactionsParams struct {
+	AccountID uuid.NullUUID      `json:"account_id"`
+	Reference pgtype.Text        `json:"reference"`
+	Type      pgtype.Text        `json:"type"`
+	Currency  pgtype.Text        `json:"currency"`
+	StartDate pgtype.Timestamptz `json:"start_date"`
+	EndDate   pgtype.Timestamptz `json:"end_date"`
+	Cursor    uuid.NullUUID      `json:"cursor"`
+	Limit     int32              `json:"limit"`
+}
+
+// Newest first. The cursor is the id of the last row on the previous page;
+// ids are UUIDv7, so id order is creation order. Filters are optional.
+func (q *Queries) ListTransactions(ctx context.Context, arg ListTransactionsParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, listTransactions,
+		arg.AccountID,
+		arg.Reference,
+		arg.Type,
+		arg.Currency,
+		arg.StartDate,
+		arg.EndDate,
+		arg.Cursor,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.Reference,
+			&i.Type,
+			&i.Currency,
+			&i.ParentTransactionID,
+			&i.Description,
+			&i.Metadata,
+			&i.TransactionDate,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

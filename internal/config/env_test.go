@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/mide7/go-financial-ledger-api/internal/logger"
 )
@@ -117,5 +118,43 @@ func TestConfig_LoggerOptions(t *testing.T) {
 	if got.Env != logger.EnvProduction || got.Level != "warn" || got.Format != logger.FormatJSON ||
 		!slices.Equal(got.Outputs, []string{"stdout"}) || got.Service != "migrate" {
 		t.Errorf("LoggerOptions() = %+v", got)
+	}
+}
+
+func TestFromEnv_IdempotencyTTL(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     *string
+		want    time.Duration
+		wantErr bool
+	}{
+		{name: "default", want: 24 * time.Hour},
+		{name: "custom", raw: new("90m"), want: 90 * time.Minute},
+		{name: "not a duration", raw: new("tomorrow"), wantErr: true},
+		{name: "zero", raw: new("0s"), wantErr: true},
+		{name: "negative", raw: new("-1h"), wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://localhost/ledger")
+
+			if tt.raw != nil {
+				t.Setenv("IDEMPOTENCY_TTL", *tt.raw)
+			}
+
+			cfg, err := fromEnv()
+			if tt.wantErr {
+				if !errors.Is(err, ErrInvalidValue) {
+					t.Fatalf("fromEnv() error = %v, want ErrInvalidValue", err)
+				}
+
+				return
+			}
+
+			if err != nil || cfg.IdempotencyTTL != tt.want {
+				t.Fatalf("fromEnv() = %v, %v; want IdempotencyTTL %v", cfg.IdempotencyTTL, err, tt.want)
+			}
+		})
 	}
 }

@@ -1,6 +1,9 @@
 package repository
 
 import (
+	"encoding/json"
+
+	"github.com/mide7/go-financial-ledger-api/internal/domain"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
@@ -24,10 +27,6 @@ func mapToAccountDomain(a *sqlc.Account) *account.Account {
 }
 
 func mapToAccountDomainList(as []sqlc.Account) []account.Account {
-	if len(as) == 0 {
-		return nil
-	}
-
 	accounts := make([]account.Account, len(as))
 	for i, a := range as {
 		accounts[i] = *mapToAccountDomain(&a)
@@ -48,9 +47,27 @@ func mapToTransactionDomain(t *sqlc.Transaction) *transaction.Transaction {
 		Currency:            t.Currency,
 		ParentTransactionID: t.ParentTransactionID,
 		Description:         t.Description,
-		Metadata:            t.Metadata,
+		Metadata:            json.RawMessage(t.Metadata),
+		TransactionDate:     t.TransactionDate,
 		CreatedAt:           t.CreatedAt,
 	}
+}
+
+func mapToEntryDomainList(es []sqlc.Entry) []transaction.Entry {
+	entries := make([]transaction.Entry, len(es))
+	for i, e := range es {
+		entries[i] = transaction.Entry{
+			ID:            e.ID,
+			TransactionID: e.TransactionID,
+			AccountID:     e.AccountID,
+			Type:          domain.EntryType(e.Type),
+			Amount:        e.Amount,
+			EntrySequence: e.EntrySequence,
+			CreatedAt:     e.CreatedAt,
+		}
+	}
+
+	return entries
 }
 
 func mapToDiscrepancyDomain(d *sqlc.DiscrepancyRecord) *account.DiscrepancyRecord {

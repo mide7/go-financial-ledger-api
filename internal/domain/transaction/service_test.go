@@ -29,6 +29,8 @@ func (r fakeRegistry) Get(code currency.Code) (currency.Currency, bool) {
 
 func (fakeRegistry) Reload(context.Context) error { return nil }
 
+func (fakeRegistry) List() []currency.Currency { return nil }
+
 func newTestService(repo *fakeRepo) Service {
 	return NewTransactionService(repo, fakeRegistry{active: map[currency.Code]bool{currency.NGN: true}})
 }

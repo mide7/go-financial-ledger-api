@@ -29,7 +29,8 @@ func RegisterHealthRoutes(h handler.HealthCheckHandler) http.Handler {
 	return router
 }
 
-// RegisterV1Routes returns a mux serving the v1 account and transaction routes.
+// RegisterV1Routes returns a mux serving the v1 account, transaction,
+// discrepancy and currency routes.
 func RegisterV1Routes(h handler.Handler) http.Handler {
 	router := http.NewServeMux()
 
@@ -40,12 +41,20 @@ func RegisterV1Routes(h handler.Handler) http.Handler {
 	router.HandleFunc("GET /accounts/{id}/statement/summary", h.GetAccountStatementSummary)
 	router.HandleFunc("GET /accounts/{id}/statement/entries", h.GetAccountStatementEntries)
 	router.HandleFunc("POST /accounts/{id}/snapshot", h.CreateAccountSnapshot)
+	router.HandleFunc("GET /accounts/{id}/snapshot", h.GetLatestAccountSnapshot)
+	router.HandleFunc("PATCH /accounts/{id}/status", h.ChangeAccountStatus)
+	router.HandleFunc("GET /accounts/{id}/status/history", h.ListAccountStatusHistory)
 	router.HandleFunc("GET /accounts/{id}", h.GetAccountDetails)
 
 	router.HandleFunc("POST /transactions", h.CreateTransaction)
 	router.HandleFunc("GET /transactions", h.ListTransactions)
 	router.HandleFunc("POST /transactions/{id}/reverse", h.ReverseTransaction)
 	router.HandleFunc("GET /transactions/{id}", h.GetTransactionDetails)
+
+	router.HandleFunc("GET /discrepancies", h.ListUnresolvedDiscrepancies)
+	router.HandleFunc("POST /discrepancies/{id}/resolve", h.ResolveDiscrepancy)
+
+	router.HandleFunc("GET /currencies", h.ListCurrencies)
 
 	return router
 }

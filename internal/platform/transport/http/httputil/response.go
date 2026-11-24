@@ -35,6 +35,10 @@ var errorMappings = []errorMapping{
 	{account.ErrInvalidDateRange, http.StatusUnprocessableEntity, "start_date must not be after end_date"},
 	{account.ErrSnapshotExists, http.StatusConflict, "no new entries since the last balance snapshot"},
 	{account.ErrSnapshotNotFound, http.StatusNotFound, "no balance snapshot exists for this account"},
+	{account.ErrInvalidStatus, http.StatusUnprocessableEntity, "invalid account status"},
+	{account.ErrInvalidActorType, http.StatusUnprocessableEntity, "invalid actor type"},
+	{account.ErrStatusConflict, http.StatusConflict, "account is not in the expected status"},
+	{account.ErrDiscrepancyNotFound, http.StatusNotFound, "discrepancy not found or already resolved"},
 
 	// Transaction errors
 	{transaction.ErrDuplicateReference, http.StatusUnprocessableEntity, "duplicate reference"},

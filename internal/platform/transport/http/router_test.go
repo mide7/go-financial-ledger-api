@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/mide7/go-financial-ledger-api/internal/domain"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
 	httptransport "github.com/mide7/go-financial-ledger-api/internal/platform/transport/http"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handler"
@@ -55,6 +56,17 @@ func (f *fakeAccounts) CreateAccountSnapshot(
 	return &account.BalanceSnapshot{AccountID: p.ID}, nil
 }
 
+func (f *fakeAccounts) ListUnresolvedDiscrepancies(context.Context) ([]account.DiscrepancyRecord, error) {
+	return []account.DiscrepancyRecord{}, nil
+}
+
+// fakeCurrencies embeds the interface so unexercised methods panic if called.
+type fakeCurrencies struct{ currency.Registry }
+
+func (fakeCurrencies) List() []currency.Currency {
+	return []currency.Currency{{Code: currency.NGN, Name: "Naira", Exponent: 2, IsActive: true}}
+}
+
 type fakeTransactions struct{ transaction.Service }
 
 func (fakeTransactions) GetTransactionDetails(context.Context, string) (*transaction.Transaction, error) {
@@ -80,7 +92,12 @@ func serveWithLogs(
 	var logs bytes.Buffer
 
 	router := httptransport.NewRouter(
-		handler.NewHandler(accounts, fakeTransactions{}, slog.New(slog.NewJSONHandler(&logs, nil))),
+		handler.NewHandler(
+			accounts,
+			fakeTransactions{},
+			fakeCurrencies{},
+			slog.New(slog.NewJSONHandler(&logs, nil)),
+		),
 		handler.NewHealthCheckHandler(nil), // health routes are not exercised here,
 	)
 
@@ -165,6 +182,34 @@ func TestStatusCodes(t *testing.T) {
 				"/reconcile",
 			body: `{"as_of_timestamp":"2026-01-01T00:00:00Z"}`, want: http.StatusUnprocessableEntity,
 		},
+		// The new routes resolve: a malformed ID reaches the handler's
+		// decoder (422) instead of the mux (404/405).
+		{
+			name:   "latest snapshot route",
+			method: http.MethodGet,
+			target: "/api/v1/accounts/not-a-uuid/snapshot",
+			want:   http.StatusUnprocessableEntity,
+		},
+		{
+			name:   "status change route",
+			method: http.MethodPatch,
+			target: "/api/v1/accounts/not-a-uuid/status",
+			want:   http.StatusUnprocessableEntity,
+		},
+		{
+			name:   "status history route",
+			method: http.MethodGet,
+			target: "/api/v1/accounts/not-a-uuid/status/history",
+			want:   http.StatusUnprocessableEntity,
+		},
+		{
+			name:   "resolve discrepancy route",
+			method: http.MethodPost,
+			target: "/api/v1/discrepancies/not-a-uuid/resolve",
+			want:   http.StatusUnprocessableEntity,
+		},
+		{name: "discrepancies route", method: http.MethodGet, target: "/api/v1/discrepancies", want: http.StatusOK},
+		{name: "currencies route", method: http.MethodGet, target: "/api/v1/currencies", want: http.StatusOK},
 		{
 			name:   "unimplemented transaction lookup",
 			method: http.MethodGet,

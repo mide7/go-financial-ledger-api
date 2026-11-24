@@ -41,3 +41,19 @@ func TestCurrencyRegistry_Get(t *testing.T) {
 		})
 	}
 }
+
+func TestCurrencyRegistry_List(t *testing.T) {
+	t.Parallel()
+
+	r := &CurrencyRegistry{currencies: map[currency.Code]currency.Currency{
+		currency.USD: {Code: currency.USD, IsActive: true},
+		currency.NGN: {Code: currency.NGN, IsActive: true},
+		currency.EUR: {Code: currency.EUR, IsActive: false},
+	}}
+
+	got := r.List()
+
+	if len(got) != 2 || got[0].Code != currency.NGN || got[1].Code != currency.USD {
+		t.Errorf("List() = %+v, want active NGN then USD", got)
+	}
+}

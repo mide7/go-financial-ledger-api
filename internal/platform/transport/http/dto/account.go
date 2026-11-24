@@ -122,3 +122,64 @@ func (c CreateAccountSnapshotDTO) ToDomainParams() account.CreateAccountSnapshot
 		Reason: c.Reason,
 	}
 }
+
+// GetLatestAccountSnapshotDTO holds the path parameters of GET /accounts/{id}/snapshot.
+type GetLatestAccountSnapshotDTO struct {
+	ID uuid.UUID `form:"id" validate:"required"`
+}
+
+// ChangeAccountStatusDTO holds the parameters of PATCH /accounts/{id}/status.
+// When expected_status is set, the change only applies if the account is still
+// in that status. actor_id is self-reported until the API has authentication.
+type ChangeAccountStatusDTO struct {
+	ID uuid.UUID `form:"id" validate:"required"`
+	// The oneof lists are every account.Status; a struct tag cannot be wrapped.
+	Status         string `json:"status" validate:"required,oneof=ACTIVE FULLY_FROZEN DEBIT_RESTRICTED CREDIT_RESTRICTED CLOSED"`
+	ExpectedStatus string `json:"expected_status" validate:"omitempty,oneof=ACTIVE FULLY_FROZEN DEBIT_RESTRICTED CREDIT_RESTRICTED CLOSED"`
+	Reason         string `json:"reason" validate:"required,min=1,max=256"`
+	ActorID        string `json:"actor_id" validate:"required,min=1,max=64"`
+}
+
+// ToDomainParams converts the request to service parameters. API callers are
+// always recorded as ADMIN actors.
+func (c ChangeAccountStatusDTO) ToDomainParams() account.StatusChangeParams {
+	params := account.StatusChangeParams{
+		AccountID: c.ID,
+		NewStatus: account.Status(c.Status),
+		Reason:    c.Reason,
+		ActorType: account.ActorTypeAdmin,
+		ActorID:   c.ActorID,
+	}
+
+	if c.ExpectedStatus != "" {
+		expected := account.Status(c.ExpectedStatus)
+		params.ExpectedStatus = &expected
+	}
+
+	return params
+}
+
+// ListAccountStatusHistoryDTO holds the path and query parameters of
+// GET /accounts/{id}/status/history, newest first. The cursor is the id and
+// created_at of the last entry on the previous page; both or neither are set.
+type ListAccountStatusHistoryDTO struct {
+	ID              uuid.UUID     `form:"id" validate:"required"`
+	Limit           int32         `form:"limit" validate:"omitempty,gte=1,lte=100"`
+	Cursor          uuid.NullUUID `form:"cursor" validate:"required_with=CursorCreatedAt"`
+	CursorCreatedAt time.Time     `form:"cursor_created_at" validate:"required_with=Cursor"`
+}
+
+// ToDomainParams converts the request to service parameters.
+func (l ListAccountStatusHistoryDTO) ToDomainParams() account.ListAccountStatusHistoryParams {
+	params := account.ListAccountStatusHistoryParams{
+		AccountID: l.ID,
+		CursorID:  l.Cursor,
+		Limit:     l.Limit,
+	}
+
+	if l.Cursor.Valid {
+		params.CursorCreatedAt = &l.CursorCreatedAt
+	}
+
+	return params
+}

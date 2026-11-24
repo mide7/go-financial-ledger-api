@@ -94,7 +94,7 @@ func run(cfg *config.Config, log *slog.Logger) error {
 	accountService := account.NewAccountService(accountRepository, currencyRegistry, log)
 	transactionService := transaction.NewTransactionService(transactionRepository, currencyRegistry)
 
-	apiHandler := handler.NewHandler(accountService, transactionService, log)
+	apiHandler := handler.NewHandler(accountService, transactionService, currencyRegistry, log)
 	healthCheckHandler := handler.NewHealthCheckHandler(pool)
 
 	router := httptransport.NewRouter(apiHandler, healthCheckHandler)

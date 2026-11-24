@@ -1,10 +1,12 @@
 package repository
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -55,6 +57,23 @@ func (r *CurrencyRegistry) Get(code currency.Code) (currency.Currency, bool) {
 	curr, ok := r.currencies[code]
 
 	return curr, ok && curr.IsActive
+}
+
+// List returns the active currencies sorted by code.
+func (r *CurrencyRegistry) List() []currency.Currency {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	active := make([]currency.Currency, 0, len(r.currencies))
+	for _, c := range r.currencies {
+		if c.IsActive {
+			active = append(active, c)
+		}
+	}
+
+	slices.SortFunc(active, func(a, b currency.Currency) int { return cmp.Compare(a.Code, b.Code) })
+
+	return active
 }
 
 // Reload replaces the cache with the currently active currencies.

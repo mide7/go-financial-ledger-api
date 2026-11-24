@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handler"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/middleware"
@@ -91,6 +92,59 @@ func (f *fakeAccounts) CreateAccountSnapshot(
 	s := &account.BalanceSnapshot{AccountID: p.ID, Balance: 9, CreatedAt: fixedTime}
 	return s, f.record(p, s)
 }
+
+func (f *fakeAccounts) GetLatestAccountSnapshot(_ context.Context, id uuid.UUID) (*account.BalanceSnapshot, error) {
+	s := &account.BalanceSnapshot{AccountID: id, Balance: 4, CreatedAt: fixedTime}
+	return s, f.record(id, s)
+}
+
+func (f *fakeAccounts) ChangeAccountStatus(
+	_ context.Context,
+	p account.StatusChangeParams,
+) (*account.StatusHistory, error) {
+	h := &account.StatusHistory{AccountID: p.AccountID, NewStatus: p.NewStatus, CreatedAt: fixedTime}
+	return h, f.record(p, h)
+}
+
+func (f *fakeAccounts) ListAccountStatusHistory(
+	_ context.Context,
+	p account.ListAccountStatusHistoryParams,
+) ([]account.StatusHistory, error) {
+	list := []account.StatusHistory{{AccountID: p.AccountID, NewStatus: account.StatusActive, CreatedAt: fixedTime}}
+	return list, f.record(p, list)
+}
+
+func (f *fakeAccounts) ListUnresolvedDiscrepancies(context.Context) ([]account.DiscrepancyRecord, error) {
+	list := []account.DiscrepancyRecord{{ID: uuid.MustParse(testID), DiscrepancyAmount: 2, DetectedAt: fixedTime}}
+	return list, f.record(struct{}{}, list)
+}
+
+// resolveCall is what fakeAccounts.ResolveDiscrepancy records.
+type resolveCall struct {
+	ID    uuid.UUID
+	Notes string
+}
+
+func (f *fakeAccounts) ResolveDiscrepancy(_ context.Context, id uuid.UUID, notes string) error {
+	return f.record(resolveCall{ID: id, Notes: notes}, nil)
+}
+
+// fakeCurrencies is a currency.Registry holding a fixed list.
+type fakeCurrencies struct{ list []currency.Currency }
+
+func (f fakeCurrencies) Get(code currency.Code) (currency.Currency, bool) {
+	for _, c := range f.list {
+		if c.Code == code {
+			return c, true
+		}
+	}
+
+	return currency.Currency{}, false
+}
+
+func (f fakeCurrencies) List() []currency.Currency { return f.list }
+
+func (fakeCurrencies) Reload(context.Context) error { return nil }
 
 // fakeTransactions mirrors fakeAccounts for the transaction service.
 type fakeTransactions struct {
@@ -185,7 +239,7 @@ func encoded(t *testing.T, v any) string {
 }
 
 func newHandler(accounts *fakeAccounts, txns *fakeTransactions) handler.Handler {
-	return handler.NewHandler(accounts, txns, slog.New(slog.DiscardHandler))
+	return handler.NewHandler(accounts, txns, fakeCurrencies{}, slog.New(slog.DiscardHandler))
 }
 
 // errorCase is one way an endpoint can fail and the status it must produce.

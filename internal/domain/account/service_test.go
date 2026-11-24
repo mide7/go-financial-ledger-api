@@ -24,6 +24,8 @@ type fakeRepo struct {
 	discrepancyErr   error
 	getByIDErr       error
 	snapshotAccounts []uuid.UUID
+	statusChanges    []StatusChangeParams
+	historyParams    ListAccountStatusHistoryParams
 }
 
 func (f *fakeRepo) Create(_ context.Context, p CreateAccountParams) (*Account, error) {
@@ -75,6 +77,19 @@ func (f *fakeRepo) CreateBalanceSnapshot(_ context.Context, id uuid.UUID) (*Bala
 	return &BalanceSnapshot{AccountID: id}, nil
 }
 
+func (f *fakeRepo) ChangeAccountStatus(_ context.Context, p StatusChangeParams) (*StatusHistory, error) {
+	f.statusChanges = append(f.statusChanges, p)
+	return &StatusHistory{AccountID: p.AccountID, NewStatus: p.NewStatus}, nil
+}
+
+func (f *fakeRepo) ListAccountStatusHistory(
+	_ context.Context,
+	p ListAccountStatusHistoryParams,
+) ([]StatusHistory, error) {
+	f.historyParams = p
+	return nil, nil
+}
+
 type fakeRegistry struct{ active map[currency.Code]bool }
 
 func (r fakeRegistry) Get(code currency.Code) (currency.Currency, bool) {
@@ -82,6 +97,8 @@ func (r fakeRegistry) Get(code currency.Code) (currency.Currency, bool) {
 }
 
 func (fakeRegistry) Reload(context.Context) error { return nil }
+
+func (fakeRegistry) List() []currency.Currency { return nil }
 
 func newTestService(repo *fakeRepo) Service {
 	return NewAccountService(
@@ -330,6 +347,98 @@ func TestAccountService_CreateAccountSnapshot(t *testing.T) {
 
 			if tt.wantErr == nil && snapshot.AccountID != id {
 				t.Errorf("snapshot account = %s, want %s", snapshot.AccountID, id)
+			}
+		})
+	}
+}
+
+func TestAccountService_ChangeAccountStatus(t *testing.T) {
+	t.Parallel()
+
+	active, bogus := StatusActive, Status("ASLEEP")
+	valid := StatusChangeParams{
+		AccountID: uuid.New(),
+		NewStatus: StatusFullyFrozen,
+		Reason:    "kyc",
+		ActorType: ActorTypeAdmin,
+		ActorID:   "admin-1",
+	}
+
+	tests := []struct {
+		name    string
+		mutate  func(*StatusChangeParams)
+		wantErr error
+	}{
+		{name: "valid", mutate: func(*StatusChangeParams) {}},
+		{name: "valid with expected status", mutate: func(p *StatusChangeParams) { p.ExpectedStatus = &active }},
+		{name: "unknown new status", mutate: func(p *StatusChangeParams) { p.NewStatus = bogus }, wantErr: ErrInvalidStatus},
+		{
+			name:    "unknown expected status",
+			mutate:  func(p *StatusChangeParams) { p.ExpectedStatus = &bogus },
+			wantErr: ErrInvalidStatus,
+		},
+		{
+			name:    "unknown actor type",
+			mutate:  func(p *StatusChangeParams) { p.ActorType = "ROBOT" },
+			wantErr: ErrInvalidActorType,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			params := valid
+			tt.mutate(&params)
+
+			repo := &fakeRepo{}
+
+			_, err := newTestService(repo).ChangeAccountStatus(t.Context(), params)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("ChangeAccountStatus() error = %v, want %v", err, tt.wantErr)
+			}
+
+			wantCalls := 0
+			if tt.wantErr == nil {
+				wantCalls = 1
+			}
+
+			if len(repo.statusChanges) != wantCalls {
+				t.Errorf("repository calls = %d, want %d", len(repo.statusChanges), wantCalls)
+			}
+		})
+	}
+}
+
+func TestAccountService_ListAccountStatusHistory(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		limit     int32
+		wantLimit int32
+	}{
+		{name: "omitted limit uses default", limit: 0, wantLimit: DefaultPageLimit},
+		{name: "limit is kept", limit: 7, wantLimit: 7},
+		{name: "limit is capped", limit: 500, wantLimit: MaxPageLimit},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := &fakeRepo{}
+
+			_, err := newTestService(repo).ListAccountStatusHistory(t.Context(), ListAccountStatusHistoryParams{
+				AccountID: uuid.New(),
+				Limit:     tt.limit,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if repo.historyParams.Limit != tt.wantLimit {
+				t.Errorf("limit = %d, want %d", repo.historyParams.Limit, tt.wantLimit)
 			}
 		})
 	}

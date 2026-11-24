@@ -3,6 +3,7 @@
 package repository_test
 
 import (
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -179,5 +180,97 @@ func assertStatement(t *testing.T, repo account.Repository, id uuid.UUID, start,
 	if entries[0].RunningBalance != 7_500 || entries[1].RunningBalance != 10_000 {
 		t.Errorf("running balances (newest first) = %d, %d; want 7500, 10000",
 			entries[0].RunningBalance, entries[1].RunningBalance)
+	}
+}
+
+// newAccountRepo connects to TEST_DATABASE_URL, or skips the test when it is unset.
+func newAccountRepo(t *testing.T) account.Repository {
+	t.Helper()
+
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	pool, err := pgxpool.New(t.Context(), dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	t.Cleanup(pool.Close)
+
+	return repository.NewAccountRepository(pool, sqlc.New(pool))
+}
+
+func TestChangeAccountStatus(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	accounts := newAccountRepo(t)
+	wallet := mustCreateAccount(t, accounts, "it-"+uuid.NewString(), account.TypeUserWallet)
+
+	active := account.StatusActive
+	freeze := account.StatusChangeParams{
+		AccountID:      wallet.ID,
+		NewStatus:      account.StatusFullyFrozen,
+		ExpectedStatus: &active,
+		Reason:         "kyc",
+		ActorType:      account.ActorTypeAdmin,
+		ActorID:        "admin-1",
+	}
+
+	history, err := accounts.ChangeAccountStatus(ctx, freeze)
+	if err != nil {
+		t.Fatalf("ChangeAccountStatus: %v", err)
+	}
+
+	if history.PreviousStatus == nil || *history.PreviousStatus != account.StatusActive ||
+		history.NewStatus != account.StatusFullyFrozen {
+		t.Errorf("history = %+v, want ACTIVE -> FULLY_FROZEN", history)
+	}
+
+	// The account is FULLY_FROZEN now, so expecting ACTIVE must fail.
+	if _, err := accounts.ChangeAccountStatus(ctx, freeze); !errors.Is(err, account.ErrStatusConflict) {
+		t.Errorf("repeat ChangeAccountStatus error = %v, want ErrStatusConflict", err)
+	}
+
+	got, err := accounts.ListAccountStatusHistory(ctx, account.ListAccountStatusHistoryParams{
+		AccountID: wallet.ID,
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("ListAccountStatusHistory: %v", err)
+	}
+
+	if len(got) != 1 || got[0].ID != history.ID {
+		t.Errorf("history list = %+v, want only %s", got, history.ID)
+	}
+}
+
+func TestResolveDiscrepancy(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	accounts := newAccountRepo(t)
+	wallet := mustCreateAccount(t, accounts, "it-"+uuid.NewString(), account.TypeUserWallet)
+
+	record, err := accounts.CreateDiscrepancyRecord(ctx, account.CreateDiscrepancyRecordParams{
+		AccountID:         wallet.ID,
+		DiscrepancyAmount: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateDiscrepancyRecord: %v", err)
+	}
+
+	if err := accounts.ResolveDiscrepancy(ctx, record.ID, "test"); err != nil {
+		t.Fatalf("ResolveDiscrepancy: %v", err)
+	}
+
+	if err := accounts.ResolveDiscrepancy(ctx, record.ID, "again"); !errors.Is(err, account.ErrDiscrepancyNotFound) {
+		t.Errorf("second ResolveDiscrepancy error = %v, want ErrDiscrepancyNotFound", err)
+	}
+
+	if err := accounts.ResolveDiscrepancy(ctx, uuid.New(), "x"); !errors.Is(err, account.ErrDiscrepancyNotFound) {
+		t.Errorf("unknown ResolveDiscrepancy error = %v, want ErrDiscrepancyNotFound", err)
 	}
 }

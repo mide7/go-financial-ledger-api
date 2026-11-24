@@ -38,7 +38,7 @@ type Querier interface {
 	ListActiveCurrencies(ctx context.Context) ([]ListActiveCurrenciesRow, error)
 	ListUnresolvedDiscrepancies(ctx context.Context) ([]DiscrepancyRecord, error)
 	ReconcileAccount(ctx context.Context, accountID uuid.UUID) (ReconcileAccountRow, error)
-	ResolveDiscrepancy(ctx context.Context, arg ResolveDiscrepancyParams) error
+	ResolveDiscrepancy(ctx context.Context, arg ResolveDiscrepancyParams) (int64, error)
 	SeedAccountType(ctx context.Context, arg SeedAccountTypeParams) error
 	SeedCurrency(ctx context.Context, arg SeedCurrencyParams) error
 	SeedSystemAccount(ctx context.Context, arg SeedSystemAccountParams) error

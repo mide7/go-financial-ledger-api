@@ -39,12 +39,18 @@ func (f *fakeAccounts) GetAccountBalance(context.Context, uuid.UUID) (*account.G
 	return nil, errors.New("pq: connection refused")
 }
 
-func (f *fakeAccounts) GetAccountStatementSummary(_ context.Context, p account.GetStatementSummaryParams) (*account.StatementSummary, error) {
+func (f *fakeAccounts) GetAccountStatementSummary(
+	_ context.Context,
+	p account.GetStatementSummaryParams,
+) (*account.StatementSummary, error) {
 	f.summary = p
 	return &account.StatementSummary{AccountID: p.AccountID}, nil
 }
 
-func (f *fakeAccounts) CreateAccountSnapshot(_ context.Context, p account.CreateAccountSnapshotParams) (*account.BalanceSnapshot, error) {
+func (f *fakeAccounts) CreateAccountSnapshot(
+	_ context.Context,
+	p account.CreateAccountSnapshotParams,
+) (*account.BalanceSnapshot, error) {
 	f.snapshot = p
 	return &account.BalanceSnapshot{AccountID: p.ID}, nil
 }
@@ -64,7 +70,11 @@ func serve(t *testing.T, accounts *fakeAccounts, method, target, body string) *h
 }
 
 // serveWithLogs is serve plus everything the handler logged, as JSON lines.
-func serveWithLogs(t *testing.T, accounts *fakeAccounts, method, target, body string) (*httptest.ResponseRecorder, string) {
+func serveWithLogs(
+	t *testing.T,
+	accounts *fakeAccounts,
+	method, target, body string,
+) (*httptest.ResponseRecorder, string) {
 	t.Helper()
 
 	var logs bytes.Buffer
@@ -92,7 +102,9 @@ func TestStatementSummary_ReadsPathAndQuery(t *testing.T) {
 
 	accounts := &fakeAccounts{}
 	rec := serve(t, accounts, http.MethodGet,
-		"/api/v1/accounts/"+accountID+"/statement/summary?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z", "")
+		"/api/v1/accounts/"+
+			accountID+
+			"/statement/summary?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z", "")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body)
@@ -129,17 +141,36 @@ func TestStatusCodes(t *testing.T) {
 		name, method, target, body string
 		want                       int
 	}{
-		{name: "malformed account ID", method: http.MethodGet, target: "/api/v1/accounts/not-a-uuid", want: http.StatusUnprocessableEntity},
-		{name: "unknown account", method: http.MethodGet, target: "/api/v1/accounts/" + accountID, want: http.StatusNotFound},
 		{
-			name: "unsupported snapshot field", method: http.MethodPost, target: "/api/v1/accounts/" + accountID + "/snapshot",
+			name:   "malformed account ID",
+			method: http.MethodGet,
+			target: "/api/v1/accounts/not-a-uuid",
+			want:   http.StatusUnprocessableEntity,
+		},
+		{
+			name:   "unknown account",
+			method: http.MethodGet,
+			target: "/api/v1/accounts/" + accountID,
+			want:   http.StatusNotFound,
+		},
+		{
+			name: "unsupported snapshot field", method: http.MethodPost, target: "/api/v1/accounts/" +
+				accountID +
+				"/snapshot",
 			body: `{"reason":"x","target_entry_sequence":5}`, want: http.StatusUnprocessableEntity,
 		},
 		{
-			name: "unsupported reconcile field", method: http.MethodPost, target: "/api/v1/accounts/" + accountID + "/reconcile",
+			name: "unsupported reconcile field", method: http.MethodPost, target: "/api/v1/accounts/" +
+				accountID +
+				"/reconcile",
 			body: `{"as_of_timestamp":"2026-01-01T00:00:00Z"}`, want: http.StatusUnprocessableEntity,
 		},
-		{name: "unimplemented transaction lookup", method: http.MethodGet, target: "/api/v1/transactions/" + accountID, want: http.StatusNotImplemented},
+		{
+			name:   "unimplemented transaction lookup",
+			method: http.MethodGet,
+			target: "/api/v1/transactions/" + accountID,
+			want:   http.StatusNotImplemented,
+		},
 	}
 
 	for _, tt := range tests {
@@ -165,8 +196,18 @@ func TestUnexpectedErrors_AreLogged(t *testing.T) {
 		wantStatus int
 		wantLogged bool
 	}{
-		{name: "unexpected error", target: "/api/v1/accounts/" + accountID + "/balance", wantStatus: http.StatusInternalServerError, wantLogged: true},
-		{name: "known error", target: "/api/v1/accounts/" + accountID, wantStatus: http.StatusNotFound, wantLogged: false},
+		{
+			name:       "unexpected error",
+			target:     "/api/v1/accounts/" + accountID + "/balance",
+			wantStatus: http.StatusInternalServerError,
+			wantLogged: true,
+		},
+		{
+			name:       "known error",
+			target:     "/api/v1/accounts/" + accountID,
+			wantStatus: http.StatusNotFound,
+			wantLogged: false,
+		},
 	}
 
 	for _, tt := range tests {

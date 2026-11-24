@@ -57,7 +57,10 @@ func (f *fakeRepo) Reconcile(_ context.Context, _ uuid.UUID) (*ReconciliationRes
 	return f.reconcileResult, nil
 }
 
-func (f *fakeRepo) CreateDiscrepancyRecord(_ context.Context, p CreateDiscrepancyRecordParams) (*DiscrepancyRecord, error) {
+func (f *fakeRepo) CreateDiscrepancyRecord(
+	_ context.Context,
+	p CreateDiscrepancyRecordParams,
+) (*DiscrepancyRecord, error) {
 	if f.discrepancyErr != nil {
 		return nil, f.discrepancyErr
 	}
@@ -81,7 +84,11 @@ func (r fakeRegistry) Get(code currency.Code) (currency.Currency, bool) {
 func (fakeRegistry) Reload(context.Context) error { return nil }
 
 func newTestService(repo *fakeRepo) Service {
-	return NewAccountService(repo, fakeRegistry{active: map[currency.Code]bool{currency.NGN: true}}, slog.New(slog.DiscardHandler))
+	return NewAccountService(
+		repo,
+		fakeRegistry{active: map[currency.Code]bool{currency.NGN: true}},
+		slog.New(slog.DiscardHandler),
+	)
 }
 
 func TestAccountService_CreateAccount(t *testing.T) {
@@ -93,9 +100,21 @@ func TestAccountService_CreateAccount(t *testing.T) {
 		wantErr error
 	}{
 		{name: "valid", params: CreateAccountParams{OwnerID: "u1", Type: "USER_WALLET", Currency: "NGN"}},
-		{name: "unknown type", params: CreateAccountParams{OwnerID: "u1", Type: "NOPE", Currency: "NGN"}, wantErr: ErrInvalidType},
-		{name: "inactive currency", params: CreateAccountParams{OwnerID: "u1", Type: "USER_WALLET", Currency: "USD"}, wantErr: ErrInvalidCurrency},
-		{name: "unknown currency", params: CreateAccountParams{OwnerID: "u1", Type: "USER_WALLET", Currency: "XXX"}, wantErr: ErrInvalidCurrency},
+		{
+			name:    "unknown type",
+			params:  CreateAccountParams{OwnerID: "u1", Type: "NOPE", Currency: "NGN"},
+			wantErr: ErrInvalidType,
+		},
+		{
+			name:    "inactive currency",
+			params:  CreateAccountParams{OwnerID: "u1", Type: "USER_WALLET", Currency: "USD"},
+			wantErr: ErrInvalidCurrency,
+		},
+		{
+			name:    "unknown currency",
+			params:  CreateAccountParams{OwnerID: "u1", Type: "USER_WALLET", Currency: "XXX"},
+			wantErr: ErrInvalidCurrency,
+		},
 	}
 
 	for _, tt := range tests {
@@ -143,7 +162,10 @@ func TestAccountService_ListAccounts(t *testing.T) {
 			t.Parallel()
 
 			repo := &fakeRepo{}
-			if _, err := newTestService(repo).ListAccounts(t.Context(), ListAccountsParams{Page: tt.page, Limit: tt.limit}); err != nil {
+			if _, err := newTestService(repo).ListAccounts(
+				t.Context(),
+				ListAccountsParams{Page: tt.page, Limit: tt.limit},
+			); err != nil {
 				t.Fatalf("ListAccounts() error = %v", err)
 			}
 
@@ -294,7 +316,10 @@ func TestAccountService_CreateAccountSnapshot(t *testing.T) {
 
 			repo := &fakeRepo{getByIDErr: tt.getByIDErr}
 
-			snapshot, err := newTestService(repo).CreateAccountSnapshot(t.Context(), CreateAccountSnapshotParams{ID: id, Reason: "eod"})
+			snapshot, err := newTestService(repo).CreateAccountSnapshot(
+				t.Context(),
+				CreateAccountSnapshotParams{ID: id, Reason: "eod"},
+			)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("CreateAccountSnapshot() error = %v, want %v", err, tt.wantErr)
 			}

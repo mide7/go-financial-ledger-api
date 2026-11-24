@@ -28,25 +28,19 @@ func NewTransactionService(repo Repository, currencyRegistry currency.Registry) 
 	}
 }
 
-func (s *transactionService) CreateTransaction(ctx context.Context, params CreateTransactionParams) (*Transaction, error) {
-	// 1. Execute DTO and domain invariant checks (entry counts, zero amounts, double-entry balancing)
+func (s *transactionService) CreateTransaction(
+	ctx context.Context,
+	params CreateTransactionParams,
+) (*Transaction, error) {
 	if err := params.Validate(); err != nil {
 		return nil, err
 	}
 
-	// 2. Validate currency against the in-memory registry (0ms latency lookup)
-	_, active := s.currencyRegistry.Get(params.Currency)
-	if !active {
+	if _, active := s.currencyRegistry.Get(params.Currency); !active {
 		return nil, ErrInvalidCurrency
 	}
 
-	// 3. Delegate atomic persistence (header + batch entries) to the repository layer
-	createdTx, err := s.repo.Create(ctx, params)
-	if err != nil {
-		return nil, err
-	}
-
-	return createdTx, nil
+	return s.repo.Create(ctx, params)
 }
 
 func (s *transactionService) GetTransactionDetails(_ context.Context, _ string) (*Transaction, error) {

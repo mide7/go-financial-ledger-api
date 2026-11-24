@@ -88,16 +88,66 @@ func (s *Seeder) seedCurrencies(ctx context.Context, qtx *sqlc.Queries) error {
 
 func (s *Seeder) seedAccountTypes(ctx context.Context, qtx *sqlc.Queries) error {
 	accountTypes := []sqlc.SeedAccountTypeParams{
-		{Type: "USER_WALLET", Nature: natureLiability, NormalBalance: balanceCredit, Description: "User spendable balance per currency"},
-		{Type: "USER_LOCKED", Nature: natureLiability, NormalBalance: balanceCredit, Description: "User funds held pending withdrawal/dispute"},
-		{Type: "MERCHANT_WALLET", Nature: natureLiability, NormalBalance: balanceCredit, Description: "Merchant available balance per currency"},
-		{Type: "MERCHANT_PAYABLE", Nature: natureLiability, NormalBalance: balanceCredit, Description: "Settled merchant funds queued for payout"},
-		{Type: "MERCHANT_RESERVE", Nature: natureLiability, NormalBalance: balanceCredit, Description: "Rolling reserve held against chargebacks/refunds"},
-		{Type: "PLATFORM_ESCROW_LIABILITY", Nature: natureLiability, NormalBalance: balanceCredit, Description: "Funds held mid-transaction before release"},
-		{Type: "PLATFORM_FEE_REVENUE", Nature: "REVENUE", NormalBalance: balanceCredit, Description: "Platform earned fees"},
-		{Type: "PLATFORM_CASH", Nature: "ASSET", NormalBalance: "DEBIT", Description: "Real money held at bank/payment processor per currency"},
-		{Type: "PLATFORM_FX_SUSPENSE", Nature: natureLiability, NormalBalance: balanceCredit, Description: "Clearing account bridging the two legs of a currency conversion"},
-		{Type: "PLATFORM_FX_GAIN_LOSS", Nature: "REVENUE", NormalBalance: balanceCredit, Description: "Realized FX spread/slippage from conversions"},
+		{
+			Type:          "USER_WALLET",
+			Nature:        natureLiability,
+			NormalBalance: balanceCredit,
+			Description:   "User spendable balance per currency",
+		},
+		{
+			Type:          "USER_LOCKED",
+			Nature:        natureLiability,
+			NormalBalance: balanceCredit,
+			Description:   "User funds held pending withdrawal/dispute",
+		},
+		{
+			Type:          "MERCHANT_WALLET",
+			Nature:        natureLiability,
+			NormalBalance: balanceCredit,
+			Description:   "Merchant available balance per currency",
+		},
+		{
+			Type:          "MERCHANT_PAYABLE",
+			Nature:        natureLiability,
+			NormalBalance: balanceCredit,
+			Description:   "Settled merchant funds queued for payout",
+		},
+		{
+			Type:          "MERCHANT_RESERVE",
+			Nature:        natureLiability,
+			NormalBalance: balanceCredit,
+			Description:   "Rolling reserve held against chargebacks/refunds",
+		},
+		{
+			Type:          "PLATFORM_ESCROW_LIABILITY",
+			Nature:        natureLiability,
+			NormalBalance: balanceCredit,
+			Description:   "Funds held mid-transaction before release",
+		},
+		{
+			Type:          "PLATFORM_FEE_REVENUE",
+			Nature:        "REVENUE",
+			NormalBalance: balanceCredit,
+			Description:   "Platform earned fees",
+		},
+		{
+			Type:          "PLATFORM_CASH",
+			Nature:        "ASSET",
+			NormalBalance: "DEBIT",
+			Description:   "Real money held at bank/payment processor per currency",
+		},
+		{
+			Type:          "PLATFORM_FX_SUSPENSE",
+			Nature:        natureLiability,
+			NormalBalance: balanceCredit,
+			Description:   "Clearing account bridging the two legs of a currency conversion",
+		},
+		{
+			Type:          "PLATFORM_FX_GAIN_LOSS",
+			Nature:        "REVENUE",
+			NormalBalance: balanceCredit,
+			Description:   "Realized FX spread/slippage from conversions",
+		},
 	}
 	for _, a := range accountTypes {
 		if err := qtx.SeedAccountType(ctx, a); err != nil {

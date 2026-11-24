@@ -47,7 +47,11 @@ func TestIsUniqueViolation(t *testing.T) {
 		want bool
 	}{
 		{name: "unique violation", in: &pgconn.PgError{Code: pgErrUniqueViolation}, want: true},
-		{name: "wrapped unique violation", in: fmt.Errorf("insert: %w", &pgconn.PgError{Code: pgErrUniqueViolation}), want: true},
+		{
+			name: "wrapped unique violation",
+			in:   fmt.Errorf("insert: %w", &pgconn.PgError{Code: pgErrUniqueViolation}),
+			want: true,
+		},
 		{name: "foreign key violation", in: &pgconn.PgError{Code: "23503"}, want: false},
 		{name: "non-postgres error", in: errors.New("boom"), want: false},
 		{name: "nil", in: nil, want: false},

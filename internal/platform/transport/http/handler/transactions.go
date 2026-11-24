@@ -1,85 +1,46 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
+	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/dto"
-	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/httputil"
 )
 
 // CreateTransaction posts a balanced transaction from the JSON body.
 func (h *handler) CreateTransaction(w http.ResponseWriter, r *http.Request) {
-	var req dto.CreateTransactionDTO
+	h.serve(w, r, endpoint{status: http.StatusCreated, message: "transaction created"},
+		func(ctx context.Context, req dto.CreateTransactionDTO) (*transaction.Transaction, error) {
+			params, err := req.ToDomainParams()
+			if err != nil {
+				return nil, err
+			}
 
-	if err := httputil.DecodeAndValidate(r, &req); err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	params, err := req.ToDomainParams()
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	created, err := h.transactionService.CreateTransaction(r.Context(), params)
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	httputil.JSONMsg(w, http.StatusCreated, "transaction created", created)
+			return h.transactionService.CreateTransaction(ctx, params)
+		})
 }
 
 // GetTransactionDetails returns the transaction named in the path.
 func (h *handler) GetTransactionDetails(w http.ResponseWriter, r *http.Request) {
-	var req dto.GetTransactionDetailsDTO
-
-	if err := httputil.DecodeAndValidate(r, &req, httputil.SourcePath); err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	txn, err := h.transactionService.GetTransactionDetails(r.Context(), req.ID)
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, txn)
+	h.serve(w, r, endpoint{sources: fromPath, status: http.StatusOK},
+		func(ctx context.Context, req dto.GetTransactionDetailsDTO) (*transaction.Transaction, error) {
+			return h.transactionService.GetTransactionDetails(ctx, req.ID)
+		})
 }
 
 // ListTransactions returns a page of transactions filtered by the query string.
 func (h *handler) ListTransactions(w http.ResponseWriter, r *http.Request) {
-	var req dto.ListTransactionsDTO
-
-	if err := httputil.DecodeAndValidate(r, &req, httputil.SourceQuery); err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	txns, err := h.transactionService.ListTransactions(r.Context(), req.ToDomainParams())
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, txns)
+	h.serve(w, r, endpoint{sources: fromQuery, status: http.StatusOK},
+		func(ctx context.Context, req dto.ListTransactionsDTO) ([]transaction.Transaction, error) {
+			return h.transactionService.ListTransactions(ctx, req.ToDomainParams())
+		})
 }
 
-// ReverseTransaction reverses a transaction.
+// ReverseTransaction reverses a transaction. It answers with a message and no body.
 func (h *handler) ReverseTransaction(w http.ResponseWriter, r *http.Request) {
-	var req dto.ReverseTransactionDTO
-
-	if err := httputil.DecodeAndValidate(r, &req, httputil.SourcePath); err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	if err := h.transactionService.ReverseTransaction(r.Context(), req.ID); err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	httputil.JSONMsg(w, http.StatusOK, "transaction reversed", nil)
+	h.serve(w, r, endpoint{sources: fromPath, status: http.StatusOK, message: "transaction reversed"},
+		func(ctx context.Context, req dto.ReverseTransactionDTO) (any, error) {
+			return nil, h.transactionService.ReverseTransaction(ctx, req.ID)
+		})
 }

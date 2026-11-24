@@ -25,7 +25,12 @@ func TestHealthCheck(t *testing.T) {
 		wantDB     bool
 	}{
 		{name: "database reachable", wantStatus: http.StatusOK, wantDB: true},
-		{name: "database down", pingErr: errors.New("dial tcp: refused"), wantStatus: http.StatusServiceUnavailable, wantDB: false},
+		{
+			name:       "database down",
+			pingErr:    errors.New("dial tcp: refused"),
+			wantStatus: http.StatusServiceUnavailable,
+			wantDB:     false,
+		},
 	}
 
 	for _, tt := range tests {

@@ -2,154 +2,75 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
+	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/dto"
-	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/httputil"
 )
 
 // CreateAccount opens an account from the JSON body.
 func (h *handler) CreateAccount(w http.ResponseWriter, r *http.Request) {
-	var req dto.CreateAccountDTO
-
-	if err := httputil.DecodeAndValidate(r, &req); err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	account, err := h.accountService.CreateAccount(r.Context(), req.ToDomainParams())
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	httputil.JSONMsg(w, http.StatusCreated, "account created", account)
+	h.serve(w, r, endpoint{status: http.StatusCreated, message: "account created"},
+		func(ctx context.Context, req dto.CreateAccountDTO) (*account.Account, error) {
+			return h.accountService.CreateAccount(ctx, req.ToDomainParams())
+		})
 }
 
 // GetAccountDetails returns the account named in the path.
 func (h *handler) GetAccountDetails(w http.ResponseWriter, r *http.Request) {
-	var req dto.GetAccountDetailsDTO
-
-	if err := httputil.DecodeAndValidate(r, &req, httputil.SourcePath); err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	account, err := h.accountService.GetAccountDetails(r.Context(), req.ID)
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, account)
+	h.serve(w, r, endpoint{sources: fromPath, status: http.StatusOK},
+		func(ctx context.Context, req dto.GetAccountDetailsDTO) (*account.Account, error) {
+			return h.accountService.GetAccountDetails(ctx, req.ID)
+		})
 }
 
 // ListAccounts returns a page of accounts filtered by the query string.
 func (h *handler) ListAccounts(w http.ResponseWriter, r *http.Request) {
-	var req dto.ListAccountsDTO
-
-	if err := httputil.DecodeAndValidate(r, &req, httputil.SourceQuery); err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	accounts, err := h.accountService.ListAccounts(r.Context(), req.ToDomainParams())
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, accounts)
+	h.serve(w, r, endpoint{sources: fromQuery, status: http.StatusOK},
+		func(ctx context.Context, req dto.ListAccountsDTO) ([]account.Account, error) {
+			return h.accountService.ListAccounts(ctx, req.ToDomainParams())
+		})
 }
 
 // GetAccountBalance returns the balance of an account.
 func (h *handler) GetAccountBalance(w http.ResponseWriter, r *http.Request) {
-	var req dto.GetAccountBalanceDTO
-
-	if err := httputil.DecodeAndValidate(r, &req, httputil.SourcePath); err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	balance, err := h.accountService.GetAccountBalance(r.Context(), req.ID)
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, balance)
+	h.serve(w, r, endpoint{sources: fromPath, status: http.StatusOK},
+		func(ctx context.Context, req dto.GetAccountBalanceDTO) (*account.GetAccountBalanceResult, error) {
+			return h.accountService.GetAccountBalance(ctx, req.ID)
+		})
 }
 
 // GetAccountStatementSummary returns an account's statement summary for the
 // start_date and end_date query parameters.
 func (h *handler) GetAccountStatementSummary(w http.ResponseWriter, r *http.Request) {
-	var req dto.GetAccountStatementSummaryDTO
-
-	if err := httputil.DecodeAndValidate(r, &req, httputil.SourcePath, httputil.SourceQuery); err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	statement, err := h.accountService.GetAccountStatementSummary(r.Context(), req.ToDomainParams())
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, statement)
+	h.serve(w, r, endpoint{sources: fromPathQuery, status: http.StatusOK},
+		func(ctx context.Context, req dto.GetAccountStatementSummaryDTO) (*account.StatementSummary, error) {
+			return h.accountService.GetAccountStatementSummary(ctx, req.ToDomainParams())
+		})
 }
 
 // GetAccountStatementEntries returns a cursor page of an account's statement
 // entries for the date range in the query string.
 func (h *handler) GetAccountStatementEntries(w http.ResponseWriter, r *http.Request) {
-	var req dto.GetAccountStatementEntriesDTO
-
-	if err := httputil.DecodeAndValidate(r, &req, httputil.SourcePath, httputil.SourceQuery); err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	entries, err := h.accountService.GetAccountStatementEntries(r.Context(), req.ToDomainParams())
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, entries)
+	h.serve(w, r, endpoint{sources: fromPathQuery, status: http.StatusOK},
+		func(ctx context.Context, req dto.GetAccountStatementEntriesDTO) ([]account.StatementEntry, error) {
+			return h.accountService.GetAccountStatementEntries(ctx, req.ToDomainParams())
+		})
 }
 
 // ReconcileAccount compares the account's ledger with its latest snapshot.
 func (h *handler) ReconcileAccount(w http.ResponseWriter, r *http.Request) {
-	var req dto.ReconcileAccountDTO
-
-	if err := httputil.DecodeAndValidate(r, &req, httputil.SourcePath, httputil.SourceBody); err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	result, err := h.accountService.ReconcileAccount(r.Context(), req.ID)
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	httputil.JSONMsg(w, http.StatusOK, "account reconciled", result)
+	h.serve(w, r, endpoint{sources: fromPathBody, status: http.StatusOK, message: "account reconciled"},
+		func(ctx context.Context, req dto.ReconcileAccountDTO) (*account.ReconciliationResult, error) {
+			return h.accountService.ReconcileAccount(ctx, req.ID)
+		})
 }
 
 // CreateAccountSnapshot checkpoints the account's current balance.
 func (h *handler) CreateAccountSnapshot(w http.ResponseWriter, r *http.Request) {
-	var req dto.CreateAccountSnapshotDTO
-
-	if err := httputil.DecodeAndValidate(r, &req, httputil.SourcePath, httputil.SourceBody); err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	snapshot, err := h.accountService.CreateAccountSnapshot(r.Context(), req.ToDomainParams())
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-
-	httputil.JSONMsg(w, http.StatusCreated, "account snapshot created", snapshot)
+	h.serve(w, r, endpoint{sources: fromPathBody, status: http.StatusCreated, message: "account snapshot created"},
+		func(ctx context.Context, req dto.CreateAccountSnapshotDTO) (*account.BalanceSnapshot, error) {
+			return h.accountService.CreateAccountSnapshot(ctx, req.ToDomainParams())
+		})
 }

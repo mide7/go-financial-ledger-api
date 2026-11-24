@@ -54,11 +54,9 @@ func start() int {
 }
 
 func run(cfg *config.Config, log *slog.Logger) error {
-	// 1. Set a reasonable timeout for connection + seeding execution combined
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// 2. Initialize connection pool
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("create database pool: %w", err)
@@ -72,11 +70,9 @@ func run(cfg *config.Config, log *slog.Logger) error {
 
 	log.InfoContext(ctx, "✅ database connected and ready to seed")
 
-	// 3. Initialize queries & seeder
 	queries := sqlc.New(pool)
 	seeder := postgres.NewSeeder(pool, queries, log)
 
-	// 4. Execute seeding
 	if err := seeder.Run(ctx); err != nil {
 		return fmt.Errorf("execute seeders: %w", err)
 	}

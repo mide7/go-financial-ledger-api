@@ -22,7 +22,10 @@ func NewTransactionRepository(pool *pgxpool.Pool, queries *sqlc.Queries) transac
 	}
 }
 
-func (r *transactionRepository) Create(ctx context.Context, params transaction.CreateTransactionParams) (*transaction.Transaction, error) {
+func (r *transactionRepository) Create(
+	ctx context.Context,
+	params transaction.CreateTransactionParams,
+) (*transaction.Transaction, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -73,7 +76,10 @@ func (r *transactionRepository) GetByID(_ context.Context, _ string) (*transacti
 	return nil, domain.ErrNotImplemented
 }
 
-func (r *transactionRepository) List(_ context.Context, _ transaction.ListTransactionsParams) ([]transaction.Transaction, error) {
+func (r *transactionRepository) List(
+	_ context.Context,
+	_ transaction.ListTransactionsParams,
+) ([]transaction.Transaction, error) {
 	return nil, domain.ErrNotImplemented
 }
 

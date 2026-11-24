@@ -48,6 +48,8 @@ func TestAllTypes(t *testing.T) {
 	}
 
 	if len(AllTypes) != 10 {
-		t.Errorf("len(AllTypes) = %d, want 10; update this test and the seeder's account_types when adding a type", len(AllTypes))
+		t.Errorf("len(AllTypes) = %d, want 10; update this test and the seeder's account_types when adding a type",
+			len(AllTypes),
+		)
 	}
 }

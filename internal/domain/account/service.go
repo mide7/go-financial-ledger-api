@@ -74,7 +74,10 @@ func (s *accountService) GetAccountBalance(ctx context.Context, id uuid.UUID) (*
 	return s.repo.GetBalance(ctx, id)
 }
 
-func (s *accountService) GetAccountStatementSummary(ctx context.Context, params GetStatementSummaryParams) (*StatementSummary, error) {
+func (s *accountService) GetAccountStatementSummary(
+	ctx context.Context,
+	params GetStatementSummaryParams,
+) (*StatementSummary, error) {
 	if params.StartDate.After(params.EndDate) {
 		return nil, ErrInvalidDateRange
 	}
@@ -82,7 +85,10 @@ func (s *accountService) GetAccountStatementSummary(ctx context.Context, params 
 	return s.repo.GetStatementSummary(ctx, params)
 }
 
-func (s *accountService) GetAccountStatementEntries(ctx context.Context, params GetStatementEntriesParams) ([]StatementEntry, error) {
+func (s *accountService) GetAccountStatementEntries(
+	ctx context.Context,
+	params GetStatementEntriesParams,
+) ([]StatementEntry, error) {
 	if params.StartDate.After(params.EndDate) {
 		return nil, ErrInvalidDateRange
 	}
@@ -125,7 +131,10 @@ func (s *accountService) ReconcileAccount(ctx context.Context, id uuid.UUID) (*R
 	return result, nil
 }
 
-func (s *accountService) CreateAccountSnapshot(ctx context.Context, params CreateAccountSnapshotParams) (*BalanceSnapshot, error) {
+func (s *accountService) CreateAccountSnapshot(
+	ctx context.Context,
+	params CreateAccountSnapshotParams,
+) (*BalanceSnapshot, error) {
 	if _, err := s.repo.GetByID(ctx, params.ID); err != nil {
 		return nil, err
 	}

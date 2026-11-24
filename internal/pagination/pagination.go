@@ -34,7 +34,11 @@ type CursorPaginatedResult[T any] struct {
 
 // NewCursorPaginatedResult builds a page result. HasMore is true when the page is full,
 // so a final page of exactly limit items reports one extra, empty page.
-func NewCursorPaginatedResult[T any](items []T, limit int64, nextCursorID, nextCursorTime *string) CursorPaginatedResult[T] {
+func NewCursorPaginatedResult[T any](
+	items []T,
+	limit int64,
+	nextCursorID, nextCursorTime *string,
+) CursorPaginatedResult[T] {
 	return CursorPaginatedResult[T]{
 		Items:          items,
 		Limit:          limit,

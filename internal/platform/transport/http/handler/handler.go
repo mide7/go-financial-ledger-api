@@ -31,7 +31,6 @@ type Handler interface {
 
 // HealthCheckHandler serves the /health route.
 type HealthCheckHandler interface {
-	// Health
 	HealthCheck(w http.ResponseWriter, r *http.Request)
 }
 
@@ -49,6 +48,49 @@ func NewHandler(accountService account.Service, transactionService transaction.S
 		transactionService: transactionService,
 		log:                log,
 	}
+}
+
+// Request sources an endpoint can decode. A nil slice means the JSON body.
+var (
+	fromPath      = []httputil.Source{httputil.SourcePath}
+	fromQuery     = []httputil.Source{httputil.SourceQuery}
+	fromPathQuery = []httputil.Source{httputil.SourcePath, httputil.SourceQuery}
+	fromPathBody  = []httputil.Source{httputil.SourcePath, httputil.SourceBody}
+)
+
+// endpoint describes how serve decodes a request and answers on success.
+type endpoint struct {
+	sources []httputil.Source
+	status  int
+	message string // empty writes no message header
+}
+
+// serve decodes and validates the request into a Req, passes it to call, and
+// writes call's result with e's status and message. Any error goes to fail.
+func (h *handler) serve[Req, Res any](
+	w http.ResponseWriter,
+	r *http.Request,
+	e endpoint,
+	call func(context.Context, Req) (Res, error),
+) {
+	var req Req
+	if err := httputil.DecodeAndValidate(r, &req, e.sources...); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	res, err := call(r.Context(), req)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	if e.message == "" {
+		httputil.JSON(w, e.status, res)
+		return
+	}
+
+	httputil.JSONMsg(w, e.status, e.message, res)
 }
 
 // fail writes err to the client and logs it when it was unexpected (500). The

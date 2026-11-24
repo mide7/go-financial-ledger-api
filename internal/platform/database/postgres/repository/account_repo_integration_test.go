@@ -137,7 +137,8 @@ func assertReconciled(t *testing.T, repo account.Repository, id uuid.UUID) {
 
 	if result.Status != account.ReconciliationStatusReconciled || result.DiscrepancyAmount != 0 {
 		t.Errorf("reconcile = %s with discrepancy %d (ledger %d, snapshot %d + delta %d); want RECONCILED",
-			result.Status, result.DiscrepancyAmount, result.RawLedgerSum, result.SnapshotBalance, result.DeltaSinceSnapshot)
+			result.Status, result.DiscrepancyAmount,
+			result.RawLedgerSum, result.SnapshotBalance, result.DeltaSinceSnapshot)
 	}
 }
 

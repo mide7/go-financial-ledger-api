@@ -26,9 +26,10 @@ func TestChain(t *testing.T) {
 		}
 	}
 
-	handler := middleware.Chain(record("first"), record("second"))(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	inner := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		calls = append(calls, "handler")
-	}))
+	})
+	handler := middleware.Chain(record("first"), record("second"))(inner)
 
 	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil))
 

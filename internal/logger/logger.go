@@ -28,7 +28,10 @@ const (
 	FormatJSON = "json"
 )
 
-const filePrefix = "file:"
+const (
+	filePrefix   = "file:"
+	logFileFlags = os.O_APPEND | os.O_CREATE | os.O_WRONLY
+)
 
 // ErrInvalidOption is returned for an unknown environment, level, format or output.
 var ErrInvalidOption = errors.New("invalid logger option")
@@ -63,7 +66,9 @@ func Defaults(env string) (level, format string, outputs []string) {
 // it opened and must be called once logging is finished.
 func New(opts Options) (*slog.Logger, func() error, error) {
 	if opts.Env != EnvDevelopment && opts.Env != EnvProduction {
-		return nil, nil, fmt.Errorf("%w: environment %q (want %s or %s)", ErrInvalidOption, opts.Env, EnvDevelopment, EnvProduction)
+		return nil, nil, fmt.Errorf("%w: environment %q (want %s or %s)",
+			ErrInvalidOption, opts.Env, EnvDevelopment, EnvProduction,
+		)
 	}
 
 	defLevel, defFormat, defOutputs := Defaults(opts.Env)
@@ -80,7 +85,9 @@ func New(opts Options) (*slog.Logger, func() error, error) {
 	}
 
 	if !validFormat(opts.Format) {
-		return nil, nil, fmt.Errorf("%w: log format %q (want %s or %s)", ErrInvalidOption, opts.Format, FormatText, FormatJSON)
+		return nil, nil, fmt.Errorf("%w: log format %q (want %s or %s)",
+			ErrInvalidOption, opts.Format, FormatText, FormatJSON,
+		)
 	}
 
 	handlerOpts := &slog.HandlerOptions{
@@ -137,7 +144,9 @@ func openOutput(spec, defaultFormat string) (w io.Writer, format string, file *o
 	}
 
 	if !validFormat(format) {
-		return nil, "", nil, fmt.Errorf("%w: output %q has format %q (want %s or %s)", ErrInvalidOption, spec, format, FormatText, FormatJSON)
+		return nil, "", nil, fmt.Errorf("%w: output %q has format %q (want %s or %s)",
+			ErrInvalidOption, spec, format, FormatText, FormatJSON,
+		)
 	}
 
 	switch {
@@ -148,7 +157,7 @@ func openOutput(spec, defaultFormat string) (w io.Writer, format string, file *o
 	case strings.HasPrefix(dest, filePrefix) && len(dest) > len(filePrefix):
 		path := strings.TrimPrefix(dest, filePrefix)
 
-		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o640) //nolint:gosec // path comes from operator configuration, not user input
+		f, err := os.OpenFile(path, logFileFlags, 0o640) //nolint:gosec // operator-set path; group-readable logs
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("open log file %q: %w", path, err)
 		}

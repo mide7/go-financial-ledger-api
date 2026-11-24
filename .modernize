@@ -1,0 +1,3 @@
+# Ignored modernization suggestions
+# Format: <date> <category> <description>
+2026-11-20 stdlib-uuid Keep github.com/google/uuid: Go 1.27's uuid package has no NullUUID or sql Scanner/Valuer, which sqlc overrides and pgx params rely on (18 NullUUID uses). Revisit when stdlib adds them.

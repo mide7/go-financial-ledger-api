@@ -24,7 +24,6 @@ func NewRouter(h handler.Handler, healthCheckHandler handler.HealthCheckHandler)
 func RegisterHealthRoutes(h handler.HealthCheckHandler) http.Handler {
 	router := http.NewServeMux()
 
-	// Health
 	router.HandleFunc("GET /", h.HealthCheck)
 
 	return router
@@ -34,7 +33,6 @@ func RegisterHealthRoutes(h handler.HealthCheckHandler) http.Handler {
 func RegisterV1Routes(h handler.Handler) http.Handler {
 	router := http.NewServeMux()
 
-	// Accounts
 	router.HandleFunc("POST /accounts", h.CreateAccount)
 	router.HandleFunc("GET /accounts", h.ListAccounts)
 	router.HandleFunc("GET /accounts/{id}/balance", h.GetAccountBalance)
@@ -44,7 +42,6 @@ func RegisterV1Routes(h handler.Handler) http.Handler {
 	router.HandleFunc("POST /accounts/{id}/snapshot", h.CreateAccountSnapshot)
 	router.HandleFunc("GET /accounts/{id}", h.GetAccountDetails)
 
-	// Transactions
 	router.HandleFunc("POST /transactions", h.CreateTransaction)
 	router.HandleFunc("GET /transactions", h.ListTransactions)
 	router.HandleFunc("POST /transactions/{id}/reverse", h.ReverseTransaction)

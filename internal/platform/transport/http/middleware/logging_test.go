@@ -31,12 +31,16 @@ func TestLogging(t *testing.T) {
 
 			var logs bytes.Buffer
 
-			handler := middleware.Logging(slog.New(slog.NewJSONHandler(&logs, nil)))(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			log := slog.New(slog.NewJSONHandler(&logs, nil))
+			handler := middleware.Logging(log)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.status)
 			}))
 
 			rec := httptest.NewRecorder()
-			handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/accounts?page=2", nil))
+			handler.ServeHTTP(
+				rec,
+				httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/accounts?page=2", nil),
+			)
 
 			if rec.Code != tt.status {
 				t.Errorf("response status = %d, want %d (middleware must not change it)", rec.Code, tt.status)
@@ -68,7 +72,8 @@ func TestLogging_DefaultStatusIsOK(t *testing.T) {
 	var logs bytes.Buffer
 
 	// A handler that writes a body without calling WriteHeader sends 200.
-	handler := middleware.Logging(slog.New(slog.NewJSONHandler(&logs, nil)))(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	log := slog.New(slog.NewJSONHandler(&logs, nil))
+	handler := middleware.Logging(log)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
 	}))
 

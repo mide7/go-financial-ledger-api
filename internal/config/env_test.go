@@ -77,7 +77,11 @@ func TestFromEnv_LogOutputs(t *testing.T) {
 		want []string
 	}{
 		{name: "single", raw: "stderr", want: []string{"stderr"}},
-		{name: "several with spaces", raw: " stdout@json , file:/var/log/app.log ,stderr@text", want: []string{"stdout@json", "file:/var/log/app.log", "stderr@text"}},
+		{
+			name: "several with spaces",
+			raw:  " stdout@json , file:/var/log/app.log ,stderr@text",
+			want: []string{"stdout@json", "file:/var/log/app.log", "stderr@text"},
+		},
 		{name: "blank items dropped", raw: "stderr,,  ,", want: []string{"stderr"}},
 		{name: "empty", raw: "", want: nil},
 	}
@@ -102,7 +106,12 @@ func TestFromEnv_LogOutputs(t *testing.T) {
 func TestConfig_LoggerOptions(t *testing.T) {
 	t.Parallel()
 
-	cfg := &Config{AppEnv: logger.EnvProduction, LogLevel: "warn", LogFormat: logger.FormatJSON, LogOutputs: []string{"stdout"}}
+	cfg := &Config{
+		AppEnv:     logger.EnvProduction,
+		LogLevel:   "warn",
+		LogFormat:  logger.FormatJSON,
+		LogOutputs: []string{"stdout"},
+	}
 
 	got := cfg.LoggerOptions("migrate")
 	if got.Env != logger.EnvProduction || got.Level != "warn" || got.Format != logger.FormatJSON ||

@@ -23,9 +23,18 @@ func TestDiscrepancyHandlers(t *testing.T) {
 		{
 			name:       "list unresolved",
 			endpoint:   func(h handler.Handler) http.HandlerFunc { return h.ListUnresolvedDiscrepancies },
-			req:        request{method: http.MethodGet, target: "/discrepancies"},
+			req:        request{method: http.MethodGet, target: "/discrepancies?limit=5&cursor=" + testID},
 			wantStatus: http.StatusOK,
-			wantParams: struct{}{},
+			wantParams: account.ListDiscrepanciesParams{
+				Cursor: uuid.NullUUID{UUID: uuid.MustParse(testID), Valid: true},
+				Limit:  5,
+			},
+		},
+		{
+			name:       "list rejects limit over 100",
+			endpoint:   func(h handler.Handler) http.HandlerFunc { return h.ListUnresolvedDiscrepancies },
+			req:        request{method: http.MethodGet, target: "/discrepancies?limit=101"},
+			wantStatus: http.StatusUnprocessableEntity,
 		},
 		{
 			name:        "resolve",

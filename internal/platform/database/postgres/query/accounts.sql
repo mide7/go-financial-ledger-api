@@ -85,6 +85,22 @@ ORDER BY -- Sort by created_at
     -- Tiebreaker
     id DESC
 LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
+-- name: CountAccounts :one
+-- Counts the accounts ListAccounts pages through, with the same filters.
+SELECT COUNT(*)
+FROM accounts
+WHERE (
+        sqlc.narg(owner_id)::text IS NULL
+        OR owner_id = sqlc.narg(owner_id)
+    )
+    AND (
+        sqlc.narg(type)::text IS NULL
+        OR type = sqlc.narg(type)
+    )
+    AND (
+        sqlc.narg(currency)::text IS NULL
+        OR currency = sqlc.narg(currency)
+    );
 -- name: GetAccountBalance :one
 -- Balances are positive in the account's normal-balance direction
 -- (account_types.normal_balance), matching snapshots and reconciliation.

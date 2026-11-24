@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
+	"github.com/mide7/go-financial-ledger-api/internal/pagination"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/dto"
 )
 
@@ -28,7 +29,7 @@ func (h *handler) GetAccountDetails(w http.ResponseWriter, r *http.Request) {
 // ListAccounts returns a page of accounts filtered by the query string.
 func (h *handler) ListAccounts(w http.ResponseWriter, r *http.Request) {
 	h.serve(w, r, endpoint{sources: fromQuery, status: http.StatusOK},
-		func(ctx context.Context, req dto.ListAccountsDTO) ([]account.Account, error) {
+		func(ctx context.Context, req dto.ListAccountsDTO) (pagination.OffsetPaginatedResult[account.Account], error) {
 			return h.accountService.ListAccounts(ctx, req.ToDomainParams())
 		})
 }
@@ -54,7 +55,10 @@ func (h *handler) GetAccountStatementSummary(w http.ResponseWriter, r *http.Requ
 // entries for the date range in the query string.
 func (h *handler) GetAccountStatementEntries(w http.ResponseWriter, r *http.Request) {
 	h.serve(w, r, endpoint{sources: fromPathQuery, status: http.StatusOK},
-		func(ctx context.Context, req dto.GetAccountStatementEntriesDTO) ([]account.StatementEntry, error) {
+		func(
+			ctx context.Context,
+			req dto.GetAccountStatementEntriesDTO,
+		) (pagination.CursorPaginatedResult[account.StatementEntry], error) {
 			return h.accountService.GetAccountStatementEntries(ctx, req.ToDomainParams())
 		})
 }
@@ -94,7 +98,10 @@ func (h *handler) ChangeAccountStatus(w http.ResponseWriter, r *http.Request) {
 // ListAccountStatusHistory returns a cursor page of the account's status changes.
 func (h *handler) ListAccountStatusHistory(w http.ResponseWriter, r *http.Request) {
 	h.serve(w, r, endpoint{sources: fromPathQuery, status: http.StatusOK},
-		func(ctx context.Context, req dto.ListAccountStatusHistoryDTO) ([]account.StatusHistory, error) {
+		func(
+			ctx context.Context,
+			req dto.ListAccountStatusHistoryDTO,
+		) (pagination.CursorPaginatedResult[account.StatusHistory], error) {
 			return h.accountService.ListAccountStatusHistory(ctx, req.ToDomainParams())
 		})
 }

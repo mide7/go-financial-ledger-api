@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/mide7/go-financial-ledger-api/internal/domain"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
+	"github.com/mide7/go-financial-ledger-api/internal/pagination"
 )
 
 // Page size bounds applied when a listing request omits or exceeds them.
@@ -18,7 +19,7 @@ const (
 type Service interface {
 	CreateTransaction(ctx context.Context, params CreateTransactionParams) (*Transaction, error)
 	GetTransactionDetails(ctx context.Context, id uuid.UUID) (*Transaction, error)
-	ListTransactions(ctx context.Context, params ListTransactionsParams) ([]Transaction, error)
+	ListTransactions(ctx context.Context, params ListTransactionsParams) (pagination.CursorPaginatedResult[Transaction], error)
 	ReverseTransaction(ctx context.Context, params ReverseTransactionParams) (*Transaction, error)
 	CreateConversion(ctx context.Context, params CreateConversionParams) (*Conversion, error)
 }
@@ -62,20 +63,28 @@ func (s *transactionService) GetTransactionDetails(ctx context.Context, id uuid.
 	return s.repo.GetByID(ctx, id)
 }
 
-// ListTransactions returns transaction headers, newest first. A limit outside
-// 1..MaxPageLimit becomes DefaultPageLimit or MaxPageLimit. When both dates are
-// set, StartDate must be before EndDate (the range is half-open).
+// ListTransactions returns a page of transaction headers, newest first. A
+// limit outside 1..MaxPageLimit becomes DefaultPageLimit or MaxPageLimit. When
+// both dates are set, StartDate must be before EndDate (the range is half-open).
 func (s *transactionService) ListTransactions(
 	ctx context.Context,
 	params ListTransactionsParams,
-) ([]Transaction, error) {
+) (pagination.CursorPaginatedResult[Transaction], error) {
 	if !params.StartDate.IsZero() && !params.EndDate.IsZero() && !params.StartDate.Before(params.EndDate) {
-		return nil, ErrInvalidDateRange
+		return pagination.CursorPaginatedResult[Transaction]{}, ErrInvalidDateRange
 	}
 
-	params.Limit = clampLimit(params.Limit)
+	limit := clampLimit(params.Limit)
+	params.Limit = pagination.FetchLimit(limit)
 
-	return s.repo.List(ctx, params)
+	txns, err := s.repo.List(ctx, params)
+	if err != nil {
+		return pagination.CursorPaginatedResult[Transaction]{}, err
+	}
+
+	return pagination.NewCursorPaginatedResult(txns, limit, func(t Transaction) pagination.Cursor {
+		return pagination.Cursor{ID: t.ID}
+	}), nil
 }
 
 // ReverseTransaction posts a REVERSAL transaction that mirrors the entries of

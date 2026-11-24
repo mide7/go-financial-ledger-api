@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
+	"github.com/mide7/go-financial-ledger-api/internal/pagination"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/dto"
 )
 
@@ -32,7 +33,10 @@ func (h *handler) GetTransactionDetails(w http.ResponseWriter, r *http.Request) 
 // ListTransactions returns a page of transactions filtered by the query string.
 func (h *handler) ListTransactions(w http.ResponseWriter, r *http.Request) {
 	h.serve(w, r, endpoint{sources: fromQuery, status: http.StatusOK},
-		func(ctx context.Context, req dto.ListTransactionsDTO) ([]transaction.Transaction, error) {
+		func(
+			ctx context.Context,
+			req dto.ListTransactionsDTO,
+		) (pagination.CursorPaginatedResult[transaction.Transaction], error) {
 			return h.transactionService.ListTransactions(ctx, req.ToDomainParams())
 		})
 }

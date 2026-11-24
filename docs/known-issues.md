@@ -32,7 +32,6 @@ None known as of 2026-11-24.
 - `JSONResponse`'s `SkipJSONResponse` flag is read from the request context
   before the handler runs, so only an outer middleware can set it. A handler
   can't opt out.
-- `GET /discrepancies` is not paginated.
 
 ## Tooling and operations
 

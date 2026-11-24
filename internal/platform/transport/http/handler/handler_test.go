@@ -16,6 +16,7 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/withdrawal"
+	"github.com/mide7/go-financial-ledger-api/internal/pagination"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handler"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/middleware"
 )
@@ -50,9 +51,14 @@ func (f *fakeAccounts) GetAccountDetails(_ context.Context, id uuid.UUID) (*acco
 	return a, f.record(id, a)
 }
 
-func (f *fakeAccounts) ListAccounts(_ context.Context, p account.ListAccountsParams) ([]account.Account, error) {
+func (f *fakeAccounts) ListAccounts(
+	_ context.Context,
+	p account.ListAccountsParams,
+) (pagination.OffsetPaginatedResult[account.Account], error) {
 	list := []account.Account{{ID: uuid.MustParse(testID), CreatedAt: fixedTime}}
-	return list, f.record(p, list)
+	page := pagination.NewOffsetPaginatedResult(list, 1, 20, 1)
+
+	return page, f.record(p, page)
 }
 
 func (f *fakeAccounts) GetAccountBalance(_ context.Context, id uuid.UUID) (*account.GetAccountBalanceResult, error) {
@@ -71,9 +77,11 @@ func (f *fakeAccounts) GetAccountStatementSummary(
 func (f *fakeAccounts) GetAccountStatementEntries(
 	_ context.Context,
 	p account.GetStatementEntriesParams,
-) ([]account.StatementEntry, error) {
-	e := []account.StatementEntry{{ID: uuid.MustParse(testID), Amount: 3, CreatedAt: fixedTime}}
-	return e, f.record(p, e)
+) (pagination.CursorPaginatedResult[account.StatementEntry], error) {
+	e := account.StatementEntry{ID: uuid.MustParse(testID), Amount: 3, CreatedAt: fixedTime}
+	page := cursorPage(e, e.ID)
+
+	return page, f.record(p, page)
 }
 
 func (f *fakeAccounts) ReconcileAccount(_ context.Context, id uuid.UUID) (*account.ReconciliationResult, error) {
@@ -110,9 +118,11 @@ func (f *fakeAccounts) ChangeAccountStatus(
 func (f *fakeAccounts) ListAccountStatusHistory(
 	_ context.Context,
 	p account.ListAccountStatusHistoryParams,
-) ([]account.StatusHistory, error) {
-	list := []account.StatusHistory{{AccountID: p.AccountID, NewStatus: account.StatusActive, CreatedAt: fixedTime}}
-	return list, f.record(p, list)
+) (pagination.CursorPaginatedResult[account.StatusHistory], error) {
+	h := account.StatusHistory{AccountID: p.AccountID, NewStatus: account.StatusActive, CreatedAt: fixedTime}
+	page := cursorPage(h, uuid.MustParse(testID))
+
+	return page, f.record(p, page)
 }
 
 func (f *fakeAccounts) ReconcileAllAccounts(context.Context) (*account.ReconciliationRun, error) {
@@ -120,9 +130,22 @@ func (f *fakeAccounts) ReconcileAllAccounts(context.Context) (*account.Reconcili
 	return r, f.record(struct{}{}, r)
 }
 
-func (f *fakeAccounts) ListUnresolvedDiscrepancies(context.Context) ([]account.DiscrepancyRecord, error) {
-	list := []account.DiscrepancyRecord{{ID: uuid.MustParse(testID), DiscrepancyAmount: 2, DetectedAt: fixedTime}}
-	return list, f.record(struct{}{}, list)
+func (f *fakeAccounts) ListUnresolvedDiscrepancies(
+	_ context.Context,
+	p account.ListDiscrepanciesParams,
+) (pagination.CursorPaginatedResult[account.DiscrepancyRecord], error) {
+	d := account.DiscrepancyRecord{ID: uuid.MustParse(testID), DiscrepancyAmount: 2, DetectedAt: fixedTime}
+	page := cursorPage(d, d.ID)
+
+	return page, f.record(p, page)
+}
+
+// cursorPage wraps item as a one-item page with more to come, so handler
+// tests see every page field, next_cursor included, round-trip through JSON.
+func cursorPage[T any](item T, id uuid.UUID) pagination.CursorPaginatedResult[T] {
+	return pagination.NewCursorPaginatedResult([]T{item, item}, 1, func(T) pagination.Cursor {
+		return pagination.Cursor{ID: id}
+	})
 }
 
 // resolveCall is what fakeAccounts.ResolveDiscrepancy records.
@@ -180,9 +203,11 @@ func (f *fakeTransactions) GetTransactionDetails(_ context.Context, id uuid.UUID
 func (f *fakeTransactions) ListTransactions(
 	_ context.Context,
 	p transaction.ListTransactionsParams,
-) ([]transaction.Transaction, error) {
-	list := []transaction.Transaction{{ID: uuid.MustParse(testID), CreatedAt: fixedTime}}
-	return list, f.record(p, list)
+) (pagination.CursorPaginatedResult[transaction.Transaction], error) {
+	txn := transaction.Transaction{ID: uuid.MustParse(testID), CreatedAt: fixedTime}
+	page := cursorPage(txn, txn.ID)
+
+	return page, f.record(p, page)
 }
 
 func (f *fakeTransactions) ReverseTransaction(

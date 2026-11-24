@@ -13,7 +13,10 @@ type Repository interface {
 	Create(ctx context.Context, params CreateAccountParams) (*Account, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Account, error)
 	GetByOwnerTypeCurrency(ctx context.Context, params GetAccountByOwnerTypeCurrencyParams) (*Account, error)
+	// List returns one page of accounts; Count returns how many match the
+	// same filters, ignoring Page and Limit.
 	List(ctx context.Context, params ListAccountsParams) ([]Account, error)
+	Count(ctx context.Context, params ListAccountsParams) (int64, error)
 
 	// Balance & Audit queries
 	GetBalance(ctx context.Context, accountID uuid.UUID) (*GetAccountBalanceResult, error)
@@ -30,7 +33,7 @@ type Repository interface {
 
 	// Discrepancy audit trail
 	CreateDiscrepancyRecord(ctx context.Context, params CreateDiscrepancyRecordParams) (*DiscrepancyRecord, error)
-	ListUnresolvedDiscrepancies(ctx context.Context) ([]DiscrepancyRecord, error)
+	ListUnresolvedDiscrepancies(ctx context.Context, params ListDiscrepanciesParams) ([]DiscrepancyRecord, error)
 	ResolveDiscrepancy(ctx context.Context, id uuid.UUID, notes string) error
 
 	// Snapshots

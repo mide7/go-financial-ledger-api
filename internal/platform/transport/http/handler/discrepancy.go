@@ -5,14 +5,18 @@ import (
 	"net/http"
 
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
+	"github.com/mide7/go-financial-ledger-api/internal/pagination"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/dto"
 )
 
-// ListUnresolvedDiscrepancies returns every unresolved discrepancy, newest first.
+// ListUnresolvedDiscrepancies returns a cursor page of unresolved discrepancies, newest first.
 func (h *handler) ListUnresolvedDiscrepancies(w http.ResponseWriter, r *http.Request) {
 	h.serve(w, r, endpoint{sources: fromQuery, status: http.StatusOK},
-		func(ctx context.Context, _ struct{}) ([]account.DiscrepancyRecord, error) {
-			return h.accountService.ListUnresolvedDiscrepancies(ctx)
+		func(
+			ctx context.Context,
+			req dto.ListDiscrepanciesDTO,
+		) (pagination.CursorPaginatedResult[account.DiscrepancyRecord], error) {
+			return h.accountService.ListUnresolvedDiscrepancies(ctx, req.ToDomainParams())
 		})
 }
 

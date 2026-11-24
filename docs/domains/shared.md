@@ -15,16 +15,20 @@ Small packages used by several domains.
 
 ## `internal/pagination`
 
-[pagination.go](../../internal/pagination/pagination.go) defines generic
-response envelopes for paginated lists:
+[pagination.go](../../internal/pagination/pagination.go) defines the page
+every list endpoint returns ([API → Pagination](../api.md#pagination)):
 
-- `OffsetPaginatedResult[T]`: `items`, `limit`, `page` (1-based),
-  `total_count`, `has_more`.
-- `CursorPaginatedResult[T]`: `items`, `limit`, `next_cursor_id`,
-  `next_cursor_time`, `has_more`. `has_more` is true when the page is full, so
-  a final page of exactly `limit` items is followed by one empty page.
+- `OffsetPaginatedResult[T]`: `items`, `page` (1-based), `limit`,
+  `total_count`, `has_more`. Built by `NewOffsetPaginatedResult(items, page,
+  limit, total)`; used by `ListAccounts`, whose repository has a matching `Count`.
+- `CursorPaginatedResult[T]`: `items`, `limit`, `has_more`, `next_cursor`, and
+  `next_cursor_created_at` for keysets that include a timestamp.
 
-Endpoints don't use these yet; they return plain arrays.
+Cursor listings follow one pattern in the service: clamp the limit, ask the
+repository for `FetchLimit(limit)` rows (one extra), then
+`NewCursorPaginatedResult(rows, limit, cursorOf)` drops the extra row, sets
+`has_more` and takes the cursor from the last item. Repositories just return
+"up to Limit rows". Both constructors turn a nil slice into `[]`.
 
 ## `internal/config`
 

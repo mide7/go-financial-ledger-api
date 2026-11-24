@@ -20,7 +20,18 @@ type GetAccountByOwnerTypeCurrencyParams struct {
 	Currency string
 }
 
-// ListAccountsParams filter, sort and paginate an account listing.
+// Sort fields and orders accepted by ListAccounts.
+const (
+	SortByCreatedAt = "created_at"
+	SortByType      = "type"
+	SortByCurrency  = "currency"
+	SortOrderAsc    = "asc"
+	SortOrderDesc   = "desc"
+)
+
+// ListAccountsParams filter, sort and offset-paginate an account listing.
+// Empty filters match everything. SortBy defaults to created_at and OrderBy
+// (asc or desc) to desc; ties are broken by id, newest first.
 type ListAccountsParams struct {
 	Page     int
 	Limit    int
@@ -29,6 +40,13 @@ type ListAccountsParams struct {
 	Currency string
 	Type     string
 	OwnerID  string
+}
+
+// ListDiscrepanciesParams cursor-paginate the unresolved discrepancies,
+// newest first. Cursor is the id of the last record on the previous page.
+type ListDiscrepanciesParams struct {
+	Cursor uuid.NullUUID
+	Limit  int32
 }
 
 // CreateAccountSnapshotParams request a balance snapshot covering every entry

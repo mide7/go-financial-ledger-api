@@ -5,6 +5,7 @@ package repository_test
 import (
 	"errors"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -333,6 +334,7 @@ func TestListAccounts_OwnerFilter(t *testing.T) {
 		name    string
 		params  account.ListAccountsParams
 		wantIDs []uuid.UUID
+		ordered bool // wantIDs is the exact order, not just the set
 	}{
 		{
 			name:    "owner only",
@@ -343,6 +345,12 @@ func TestListAccounts_OwnerFilter(t *testing.T) {
 			name:    "owner and type",
 			params:  account.ListAccountsParams{OwnerID: alice, Type: string(account.TypeUserWallet)},
 			wantIDs: []uuid.UUID{aliceWallet.ID},
+		},
+		{
+			name:    "sorted by type ascending",
+			params:  account.ListAccountsParams{OwnerID: alice, SortBy: account.SortByType, OrderBy: account.SortOrderAsc},
+			wantIDs: []uuid.UUID{aliceCash.ID, aliceWallet.ID}, // PLATFORM_CASH < USER_WALLET
+			ordered: true,
 		},
 		{
 			name:   "unknown owner",
@@ -370,8 +378,17 @@ func TestListAccounts_OwnerFilter(t *testing.T) {
 				}
 			}
 
+			if tt.ordered && !slices.Equal(gotIDs, tt.wantIDs) {
+				t.Errorf("List ids = %v, want exactly %v", gotIDs, tt.wantIDs)
+			}
+
 			if !sameIDs(gotIDs, tt.wantIDs) {
 				t.Errorf("List ids = %v, want %v (any order)", gotIDs, tt.wantIDs)
+			}
+
+			count, err := accounts.Count(t.Context(), tt.params)
+			if err != nil || count != int64(len(tt.wantIDs)) {
+				t.Errorf("Count = %d, %v; want %d", count, err, len(tt.wantIDs))
 			}
 		})
 	}

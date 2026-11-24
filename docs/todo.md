@@ -144,5 +144,5 @@ callers, scope `Idempotency-Key`s per caller, record the real actor on status ch
 
 - [ ] Point-in-time reconciliation (`as_of_timestamp` on `POST /accounts/{id}/reconcile`). It's rejected with 422 today.
 - [ ] Snapshots at an earlier sequence (`target_entry_sequence` on `POST /accounts/{id}/snapshot`). It's rejected with 422 today.
-- [ ] Paging for `GET /discrepancies` (a cursor on `detected_at, id`).
+- [x] Paging for `GET /discrepancies`: a keyset cursor on `id` (2026-11-24, with the list-pagination review).
 - [ ] A real Redis health check, or drop `redis` from `/health/` until Redis is used.

@@ -19,10 +19,17 @@ VALUES (
     )
 RETURNING *;
 -- name: ListUnresolvedDiscrepancies :many
+-- Newest first. ids are UUIDv7 and detected_at defaults to the insert time,
+-- so id order is detection order; the cursor is the last id of the previous page.
 SELECT *
 FROM discrepancy_records
 WHERE resolved_at IS NULL
-ORDER BY detected_at DESC;
+    AND (
+        sqlc.narg('cursor')::uuid IS NULL
+        OR id < sqlc.narg('cursor')::uuid
+    )
+ORDER BY id DESC
+LIMIT sqlc.arg('limit')::int;
 -- name: ResolveDiscrepancy :execrows
 UPDATE discrepancy_records
 SET resolved_at = NOW(),

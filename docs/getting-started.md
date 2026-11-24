@@ -123,7 +123,7 @@ transaction. Every insert is `ON CONFLICT DO NOTHING`, so re-running is safe.
 
 - **Currencies:** USD, EUR and NGN, each with exponent 2 and active.
 - **Account types:** the 10 types listed in [Account domain](domains/account.md#account-types).
-- **System accounts:** one NGN account per account type, owned by `admin`.
+- **System accounts:** one account per account type in each of USD, EUR and NGN (30 in all), owned by `admin`.
 
 ## Migrations
 

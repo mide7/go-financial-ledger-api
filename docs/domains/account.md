@@ -50,7 +50,7 @@ funding a wallet with ₦100 is *debit `PLATFORM_CASH` 10000 / credit
 Only `USER_WALLET`, `PLATFORM_ESCROW_LIABILITY`, `PLATFORM_FEE_REVENUE` and
 `MERCHANT_PAYABLE` can be created through the API (the `oneof` rule in
 [dto/account.go](../../internal/platform/transport/http/dto/account.go)). The
-seeder creates one system account of every type.
+seeder creates a system account of every type in each seeded currency (USD, EUR, NGN).
 
 When adding a type: add the constant, add it to `AllTypes` and `IsValid`, seed
 the `account_types` row, and update `TestAllTypes`.

@@ -36,6 +36,7 @@ balance endpoint's `balance_major` uses it.
 ```go
 type Registry interface {
     Get(code Code) (Currency, bool) // false if unknown OR inactive
+    List() []Currency               // active currencies, sorted by code
     Reload(ctx context.Context) error
 }
 ```

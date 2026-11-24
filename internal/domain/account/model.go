@@ -12,15 +12,17 @@ import (
 
 // Errors returned by the account service and repository.
 var (
-	ErrAccountNotFound  = errors.New("account not found")
-	ErrInvalidCurrency  = errors.New("invalid currency code: must be 3-letter ISO code")
-	ErrInvalidType      = errors.New("invalid account type")
-	ErrInvalidStatus    = errors.New("invalid account status")
-	ErrInvalidActorType = errors.New("invalid actor type")
-	ErrAccountExists    = errors.New("account already exists for owner, type, and currency")
-	ErrDiscrepancyFound = errors.New("reconciliation failure: balance discrepancy detected")
-	ErrSnapshotNotFound = errors.New("no balance snapshot exists for account")
-	ErrSnapshotExists   = errors.New("no new entries since the last balance snapshot")
+	ErrAccountNotFound     = errors.New("account not found")
+	ErrInvalidCurrency     = errors.New("invalid currency code: must be 3-letter ISO code")
+	ErrInvalidType         = errors.New("invalid account type")
+	ErrInvalidStatus       = errors.New("invalid account status")
+	ErrInvalidActorType    = errors.New("invalid actor type")
+	ErrAccountExists       = errors.New("account already exists for owner, type, and currency")
+	ErrDiscrepancyFound    = errors.New("reconciliation failure: balance discrepancy detected")
+	ErrSnapshotNotFound    = errors.New("no balance snapshot exists for account")
+	ErrSnapshotExists      = errors.New("no new entries since the last balance snapshot")
+	ErrStatusConflict      = errors.New("account is not in the expected status")
+	ErrDiscrepancyNotFound = errors.New("discrepancy not found or already resolved")
 )
 
 // Type is an account's role in the chart of accounts; see the Type* constants.
@@ -75,6 +77,16 @@ func (s Status) String() string {
 	return string(s)
 }
 
+// IsValid reports whether s is one of the Status* constants.
+func (s Status) IsValid() bool {
+	switch s {
+	case StatusActive, StatusFullyFrozen, StatusDebitRestricted, StatusCreditRestricted, StatusClosed:
+		return true
+	default:
+		return false
+	}
+}
+
 // ActorType identifies who changed an account's status; see the ActorType* constants.
 type ActorType string
 
@@ -86,6 +98,11 @@ const (
 
 func (at ActorType) String() string {
 	return string(at)
+}
+
+// IsValid reports whether at is one of the ActorType* constants.
+func (at ActorType) IsValid() bool {
+	return at == ActorTypeSystem || at == ActorTypeAdmin
 }
 
 // Reconciliation outcomes reported in ReconciliationResult.Status.
@@ -100,6 +117,7 @@ type Account struct {
 	OwnerID   string        `json:"owner_id"`
 	Type      Type          `json:"type"`
 	Currency  currency.Code `json:"currency"`
+	Status    Status        `json:"status"`
 	CreatedAt time.Time     `json:"created_at"`
 	UpdatedAt time.Time     `json:"updated_at"`
 }

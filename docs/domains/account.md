@@ -15,14 +15,12 @@ a merchant or the platform. Its balance is never stored; it is derived from the
 | `owner_id` | string ≤ 64 | Opaque ID from the owning system; system accounts use `admin` |
 | `type` | `Type` | A row in `account_types`, see below |
 | `currency` | `currency.Code` | Fixed for the life of the account |
+| `status` | `Status` | See [Status](#status); `ACTIVE` when opened |
 | `created_at`, `updated_at` | time | |
 
 An owner can hold **one account per (type, currency)**, enforced by the
 unique constraint `uq_owner_type_currency`. A second create returns
 `ErrAccountExists` (409).
-
-The database also stores a `status` column (see [Status](#status)); it isn't
-in the `Account` struct yet.
 
 ## Account types
 
@@ -77,9 +75,17 @@ immutable:
 - `previous_status` must differ from `new_status`.
 - Only one row per account may have a `NULL` previous status: its initial status.
 
-`ChangeAccountStatus` locks the account row (`SELECT … FOR UPDATE`) and
-supports an optimistic `ExpectedStatus` check. **Status is not exposed through
-the service or API yet, and statuses are not enforced when posting.** See
+`ChangeAccountStatus` validates the new status, the optional `ExpectedStatus`
+and the actor type. The repository then locks the account row
+(`SELECT … FOR UPDATE`), and returns `ErrStatusConflict` if the account has left
+`ExpectedStatus`. Finally it updates the account and inserts the history row,
+including the previous status, in one transaction.
+
+`ListAccountStatusHistory` pages newest first on `(created_at, id)`. The cursor
+is both values from the last row of the previous page.
+
+The API records every caller as an `ADMIN` actor, with a self-reported
+`actor_id`. **Statuses are not enforced when posting yet.** See
 [Known issues](../known-issues.md).
 
 ## Service
@@ -96,6 +102,11 @@ the service or API yet, and statuses are not enforced when posting.** See
 | `GetAccountStatementEntries` | Same date check; limit defaults and caps as above |
 | `ReconcileAccount` | See below; records a discrepancy when found |
 | `CreateAccountSnapshot` | Account must exist; logs `reason` |
+| `GetLatestAccountSnapshot` | `ErrSnapshotNotFound` if none |
+| `ChangeAccountStatus` | `ErrInvalidStatus`, `ErrInvalidActorType`, `ErrStatusConflict`; logs the change |
+| `ListAccountStatusHistory` | Limit defaults and caps as above |
+| `ListUnresolvedDiscrepancies` | Newest first, unpaginated |
+| `ResolveDiscrepancy` | `ErrDiscrepancyNotFound` if unknown or already resolved |
 
 ## Balance snapshots
 
@@ -157,4 +168,6 @@ notes (`resolved_at`, `resolution_notes`). These aren't exposed through the API 
 | `ErrSnapshotExists` | 409 |
 | `ErrSnapshotNotFound` | 404 |
 | `ErrDiscrepancyFound` | 409 (reserved) |
-| `ErrInvalidStatus`, `ErrInvalidActorType` | not mapped yet → 500 |
+| `ErrInvalidStatus`, `ErrInvalidActorType` | 422 |
+| `ErrStatusConflict` | 409 |
+| `ErrDiscrepancyNotFound` | 404 |

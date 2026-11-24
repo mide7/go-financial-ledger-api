@@ -23,8 +23,9 @@ SELECT *
 FROM discrepancy_records
 WHERE resolved_at IS NULL
 ORDER BY detected_at DESC;
--- name: ResolveDiscrepancy :exec
+-- name: ResolveDiscrepancy :execrows
 UPDATE discrepancy_records
 SET resolved_at = NOW(),
     resolution_notes = sqlc.arg('notes')
-WHERE id = sqlc.arg('id');
+WHERE id = sqlc.arg('id')
+    AND resolved_at IS NULL;

@@ -110,11 +110,12 @@ func (q *Queries) ListUnresolvedDiscrepancies(ctx context.Context) ([]Discrepanc
 	return items, nil
 }
 
-const resolveDiscrepancy = `-- name: ResolveDiscrepancy :exec
+const resolveDiscrepancy = `-- name: ResolveDiscrepancy :execrows
 UPDATE discrepancy_records
 SET resolved_at = NOW(),
     resolution_notes = $1
 WHERE id = $2
+    AND resolved_at IS NULL
 `
 
 type ResolveDiscrepancyParams struct {
@@ -122,7 +123,10 @@ type ResolveDiscrepancyParams struct {
 	ID    uuid.UUID   `json:"id"`
 }
 
-func (q *Queries) ResolveDiscrepancy(ctx context.Context, arg ResolveDiscrepancyParams) error {
-	_, err := q.db.Exec(ctx, resolveDiscrepancy, arg.Notes, arg.ID)
-	return err
+func (q *Queries) ResolveDiscrepancy(ctx context.Context, arg ResolveDiscrepancyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resolveDiscrepancy, arg.Notes, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

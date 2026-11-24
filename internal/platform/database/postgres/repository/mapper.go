@@ -17,6 +17,7 @@ func mapToAccountDomain(a *sqlc.Account) *account.Account {
 		OwnerID:   a.OwnerID,
 		Type:      account.Type(a.Type),
 		Currency:  currency.Code(a.Currency),
+		Status:    account.Status(a.Status),
 		CreatedAt: a.CreatedAt,
 		UpdatedAt: a.UpdatedAt,
 	}

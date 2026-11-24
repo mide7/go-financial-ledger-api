@@ -6,7 +6,7 @@ Recorded as of 2026-11-20. Remove an entry once it's fixed.
 
 | Area | Issue | Fix direction |
 |---|---|---|
-| Account status | `accountRepository.ChangeAccountStatus` never sets `PreviousStatus` or `NewStatus` on the history insert, so `new_status` is empty and violates the `account_status` CHECK. Not reachable from the API yet. | Pass `lockedAccount.Status` and `params.NewStatus`; add an integration test |
+| Account status | Changing an account to the status it already has violates the history table's `previous_status <> new_status` CHECK and returns 500 | Reject it in the repository after the row lock, as a 409 or 422 |
 | Create transaction | Omitting `metadata` sends `NULL` into the `NOT NULL` JSONB column, so the request fails with 500. `metadata` is also a `[]byte`, so clients must base64-encode JSON. | Make it `json.RawMessage` and default to `{}` |
 | Database errors | Trigger violations (currency mismatch, unbalanced) surface as 500 | Map the exceptions to 422 in the repository |
 | Statements | The summary's end date is inclusive (`<=`) but entries' end date is exclusive (`<`) | Pick one, probably half-open |
@@ -14,15 +14,15 @@ Recorded as of 2026-11-20. Remove an entry once it's fixed.
 ## Not enforced yet
 
 - **Account status:** nothing prevents posting to `FULLY_FROZEN`, `CLOSED` or
-  restricted accounts, and the status isn't returned in the `Account` response.
+  restricted accounts, or reopening a `CLOSED` account.
+- **Authentication:** there is none. Status changes record a self-reported
+  `actor_id`, and the status and discrepancy endpoints are open to any caller.
 - **Idempotency:** the `idempotency_records` table exists but isn't used. A
   transaction's unique `reference` is the only duplicate protection.
 
 ## Not implemented
 
 - Transaction get, list and reverse (return 501).
-- Status-change, status-history and discrepancy-management endpoints. The
-  repository methods exist; service and API methods don't.
 - Point-in-time reconciliation (`as_of_timestamp`) and snapshots at an earlier
   sequence (`target_entry_sequence`); both are rejected with 422.
 - Redis health check (always `true`) and the reserved config (`REDIS_*`,
@@ -38,7 +38,7 @@ Recorded as of 2026-11-20. Remove an entry once it's fixed.
 - `JSONResponse`'s `SkipJSONResponse` flag is read from the request context
   before the handler runs, so only an outer middleware can set it. A handler
   can't opt out.
-- `ErrInvalidStatus` and `ErrInvalidActorType` aren't mapped and would return 500.
+- `GET /discrepancies` is not paginated.
 
 ## Tooling and operations
 

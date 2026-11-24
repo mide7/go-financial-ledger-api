@@ -16,6 +16,12 @@ minor units** (e.g. `10000` = ₦100.00 for NGN, exponent 2).
 | GET | `/api/v1/accounts/{id}/statement/entries` | Statement lines with running balance | 200 |
 | POST | `/api/v1/accounts/{id}/reconcile` | Reconcile ledger against latest snapshot | 200 |
 | POST | `/api/v1/accounts/{id}/snapshot` | Checkpoint the current balance | 201 |
+| GET | `/api/v1/accounts/{id}/snapshot` | Latest balance snapshot | 200 |
+| PATCH | `/api/v1/accounts/{id}/status` | Change the account's status | 200 |
+| GET | `/api/v1/accounts/{id}/status/history` | Status changes, newest first | 200 |
+| GET | `/api/v1/discrepancies` | Unresolved reconciliation discrepancies | 200 |
+| POST | `/api/v1/discrepancies/{id}/resolve` | Mark a discrepancy resolved | 200 |
+| GET | `/api/v1/currencies` | Active currencies | 200 |
 | POST | `/api/v1/transactions` | Post a balanced transaction | 201 |
 | GET | `/api/v1/transactions` | List transactions | **501** |
 | GET | `/api/v1/transactions/{id}` | Transaction details | **501** |
@@ -218,6 +224,80 @@ no column for it. `target_entry_sequence` is rejected. Returns 201
 ```
 
 Returns 409 if nothing has been posted since the last snapshot.
+
+### `GET /api/v1/accounts/{id}/snapshot`
+
+Returns the account's most recent snapshot, in the same shape as the create
+response. Returns 404 `no balance snapshot exists for this account` if none has been taken.
+
+### `PATCH /api/v1/accounts/{id}/status`
+
+```json
+{ "status": "FULLY_FROZEN", "expected_status": "ACTIVE", "reason": "KYC review", "actor_id": "admin-7" }
+```
+
+| Field | Rules |
+|---|---|
+| `status` | required; one of the [account statuses](domains/account.md#status) |
+| `expected_status` | optional; the change applies only if the account is still in this status, else 409 |
+| `reason` | required, 1–256 chars |
+| `actor_id` | required, 1–64 chars. **Self-reported** until the API has authentication |
+
+API callers are always recorded with actor type `ADMIN`. Returns 200
+`"account status changed"` with the new history row:
+
+```json
+{ "id": "0190…", "account_id": "0190…", "previous_status": "ACTIVE", "new_status": "FULLY_FROZEN",
+  "reason": "KYC review", "actor_type": "ADMIN", "actor_id": "admin-7", "created_at": "…" }
+```
+
+Changing to the current status fails the history table's CHECK and currently
+returns 500. See [Known issues](known-issues.md).
+
+### `GET /api/v1/accounts/{id}/status/history[?limit=…][&cursor=…&cursor_created_at=…]`
+
+Returns history rows (same shape as above) **newest first**.
+
+| Query | Rules |
+|---|---|
+| `limit` | 1–100, default 20 |
+| `cursor`, `cursor_created_at` | the `id` and `created_at` of the last row on the previous page; send both or neither |
+
+## Discrepancies
+
+A discrepancy is recorded when [reconciliation](#post-apiv1accountsidreconcile)
+finds a mismatch.
+
+### `GET /api/v1/discrepancies`
+
+Returns every unresolved discrepancy, newest first. The list is not paginated.
+
+```json
+[
+  { "id": "0190…", "account_id": "0190…", "raw_ledger_sum": 750000, "snapshot_balance": 1000000,
+    "calculated_total": 750100, "discrepancy_amount": 100,
+    "last_snapshot_sequence": 40, "current_max_sequence": 42, "detected_at": "…" }
+]
+```
+
+### `POST /api/v1/discrepancies/{id}/resolve`
+
+```json
+{ "notes": "fee leg posted twice; corrected by order-1002" }
+```
+
+`notes` is required (1–1024 chars). Returns 200 `"discrepancy resolved"` with
+no data. Returns 404 if the discrepancy doesn't exist or is already resolved.
+
+## Currencies
+
+### `GET /api/v1/currencies`
+
+Returns the active currencies from the in-memory registry, sorted by code:
+
+```json
+[ { "code": "EUR", "name": "Euro", "exponent": 2, "is_active": true }, … ]
+```
 
 ## Transactions
 

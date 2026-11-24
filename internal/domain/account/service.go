@@ -29,6 +29,11 @@ type Service interface {
 	GetAccountStatementEntries(ctx context.Context, params GetStatementEntriesParams) ([]StatementEntry, error)
 	ReconcileAccount(ctx context.Context, id uuid.UUID) (*ReconciliationResult, error)
 	CreateAccountSnapshot(ctx context.Context, params CreateAccountSnapshotParams) (*BalanceSnapshot, error)
+	GetLatestAccountSnapshot(ctx context.Context, id uuid.UUID) (*BalanceSnapshot, error)
+	ChangeAccountStatus(ctx context.Context, params StatusChangeParams) (*StatusHistory, error)
+	ListAccountStatusHistory(ctx context.Context, params ListAccountStatusHistoryParams) ([]StatusHistory, error)
+	ListUnresolvedDiscrepancies(ctx context.Context) ([]DiscrepancyRecord, error)
+	ResolveDiscrepancy(ctx context.Context, id uuid.UUID, notes string) error
 }
 
 type accountService struct {
@@ -151,6 +156,60 @@ func (s *accountService) CreateAccountSnapshot(
 	)
 
 	return snapshot, nil
+}
+
+func (s *accountService) GetLatestAccountSnapshot(ctx context.Context, id uuid.UUID) (*BalanceSnapshot, error) {
+	return s.repo.GetLatestSnapshot(ctx, id)
+}
+
+// ChangeAccountStatus moves the account to params.NewStatus and records the
+// change in its status history. When ExpectedStatus is set, the change only
+// applies if the account is still in that status (ErrStatusConflict otherwise).
+func (s *accountService) ChangeAccountStatus(ctx context.Context, params StatusChangeParams) (*StatusHistory, error) {
+	if !params.NewStatus.IsValid() || (params.ExpectedStatus != nil && !params.ExpectedStatus.IsValid()) {
+		return nil, ErrInvalidStatus
+	}
+
+	if !params.ActorType.IsValid() {
+		return nil, ErrInvalidActorType
+	}
+
+	history, err := s.repo.ChangeAccountStatus(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	s.log.InfoContext(ctx, "account status changed",
+		"account_id", params.AccountID,
+		"new_status", params.NewStatus,
+		"actor_type", params.ActorType,
+		"actor_id", params.ActorID,
+	)
+
+	return history, nil
+}
+
+func (s *accountService) ListAccountStatusHistory(
+	ctx context.Context,
+	params ListAccountStatusHistoryParams,
+) ([]StatusHistory, error) {
+	params.Limit = clampLimit(params.Limit)
+
+	return s.repo.ListAccountStatusHistory(ctx, params)
+}
+
+func (s *accountService) ListUnresolvedDiscrepancies(ctx context.Context) ([]DiscrepancyRecord, error) {
+	return s.repo.ListUnresolvedDiscrepancies(ctx)
+}
+
+func (s *accountService) ResolveDiscrepancy(ctx context.Context, id uuid.UUID, notes string) error {
+	if err := s.repo.ResolveDiscrepancy(ctx, id, notes); err != nil {
+		return err
+	}
+
+	s.log.InfoContext(ctx, "discrepancy resolved", "discrepancy_id", id)
+
+	return nil
 }
 
 func clampLimit[T int | int32](limit T) T {

@@ -74,3 +74,27 @@ func (h *handler) CreateAccountSnapshot(w http.ResponseWriter, r *http.Request) 
 			return h.accountService.CreateAccountSnapshot(ctx, req.ToDomainParams())
 		})
 }
+
+// GetLatestAccountSnapshot returns the account's most recent balance snapshot.
+func (h *handler) GetLatestAccountSnapshot(w http.ResponseWriter, r *http.Request) {
+	h.serve(w, r, endpoint{sources: fromPath, status: http.StatusOK},
+		func(ctx context.Context, req dto.GetLatestAccountSnapshotDTO) (*account.BalanceSnapshot, error) {
+			return h.accountService.GetLatestAccountSnapshot(ctx, req.ID)
+		})
+}
+
+// ChangeAccountStatus moves the account to the status in the JSON body.
+func (h *handler) ChangeAccountStatus(w http.ResponseWriter, r *http.Request) {
+	h.serve(w, r, endpoint{sources: fromPathBody, status: http.StatusOK, message: "account status changed"},
+		func(ctx context.Context, req dto.ChangeAccountStatusDTO) (*account.StatusHistory, error) {
+			return h.accountService.ChangeAccountStatus(ctx, req.ToDomainParams())
+		})
+}
+
+// ListAccountStatusHistory returns a cursor page of the account's status changes.
+func (h *handler) ListAccountStatusHistory(w http.ResponseWriter, r *http.Request) {
+	h.serve(w, r, endpoint{sources: fromPathQuery, status: http.StatusOK},
+		func(ctx context.Context, req dto.ListAccountStatusHistoryDTO) ([]account.StatusHistory, error) {
+			return h.accountService.ListAccountStatusHistory(ctx, req.ToDomainParams())
+		})
+}

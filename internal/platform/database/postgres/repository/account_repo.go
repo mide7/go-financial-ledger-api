@@ -241,7 +241,7 @@ func (r *accountRepository) ChangeAccountStatus(
 	}
 
 	if params.ExpectedStatus != nil && *params.ExpectedStatus != account.Status(lockedAccount.Status) {
-		return nil, fmt.Errorf("account id %q is not in expected status %q", params.AccountID, *params.ExpectedStatus)
+		return nil, account.ErrStatusConflict
 	}
 
 	if err = qtx.UpdateAccountStatus(ctx, sqlc.UpdateAccountStatusParams{
@@ -252,10 +252,12 @@ func (r *accountRepository) ChangeAccountStatus(
 	}
 
 	result, err := qtx.InsertStatusHistory(ctx, sqlc.InsertStatusHistoryParams{
-		AccountID: params.AccountID,
-		Reason:    params.Reason,
-		ActorType: params.ActorType.String(),
-		ActorID:   params.ActorID,
+		AccountID:      params.AccountID,
+		PreviousStatus: &lockedAccount.Status,
+		NewStatus:      params.NewStatus.String(),
+		Reason:         params.Reason,
+		ActorType:      params.ActorType.String(),
+		ActorID:        params.ActorID,
 	})
 	if err != nil {
 		return nil, err
@@ -356,11 +358,22 @@ func (r *accountRepository) ListUnresolvedDiscrepancies(ctx context.Context) ([]
 	return records, nil
 }
 
+// ResolveDiscrepancy marks an unresolved discrepancy resolved. It returns
+// account.ErrDiscrepancyNotFound when id is unknown or already resolved.
 func (r *accountRepository) ResolveDiscrepancy(ctx context.Context, id uuid.UUID, notes string) error {
-	return r.queries.ResolveDiscrepancy(ctx, sqlc.ResolveDiscrepancyParams{
+	resolved, err := r.queries.ResolveDiscrepancy(ctx, sqlc.ResolveDiscrepancyParams{
 		ID:    id,
 		Notes: pgtype.Text{String: notes, Valid: notes != ""},
 	})
+	if err != nil {
+		return err
+	}
+
+	if resolved == 0 {
+		return account.ErrDiscrepancyNotFound
+	}
+
+	return nil
 }
 
 // CreateBalanceSnapshot checkpoints the account's balance at its latest entry.

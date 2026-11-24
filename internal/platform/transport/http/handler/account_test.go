@@ -44,8 +44,17 @@ func runAccountCases(t *testing.T, tests []accountCase) {
 			assertResponse(t, got, tt.wantStatus, tt.wantMessage)
 			assertParams(t, accounts.got, tt.wantParams)
 
-			if tt.serviceErr == nil && tt.wantParams != nil && got.body != encoded(t, accounts.resp) {
-				t.Errorf("body = %s, want %s", got.body, encoded(t, accounts.resp))
+			if tt.serviceErr != nil || tt.wantParams == nil {
+				return
+			}
+
+			wantBody := "" // a nil result writes no body
+			if accounts.resp != nil {
+				wantBody = encoded(t, accounts.resp)
+			}
+
+			if got.body != wantBody {
+				t.Errorf("body = %s, want %s", got.body, wantBody)
 			}
 		})
 	}
@@ -192,6 +201,119 @@ func TestAccountHandlers_PathID(t *testing.T) {
 	})
 }
 
+func TestAccountHandlers_StatusAndSnapshot(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.MustParse(testID)
+	cursorAt := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	expected := account.StatusActive
+	status := func(h handler.Handler) http.HandlerFunc { return h.ChangeAccountStatus }
+	history := func(h handler.Handler) http.HandlerFunc { return h.ListAccountStatusHistory }
+	freeze := `{"status":"FULLY_FROZEN","reason":"kyc","actor_id":"admin-1"`
+
+	runAccountCases(t, []accountCase{
+		{
+			name:       "latest snapshot",
+			endpoint:   func(h handler.Handler) http.HandlerFunc { return h.GetLatestAccountSnapshot },
+			req:        request{method: http.MethodGet, target: "/x", pathID: testID},
+			wantStatus: http.StatusOK,
+			wantParams: id,
+		},
+		{
+			name:        "change status records an admin actor",
+			endpoint:    status,
+			req:         request{method: http.MethodPatch, target: "/x", pathID: testID, body: freeze + `}`},
+			wantStatus:  http.StatusOK,
+			wantMessage: "account status changed",
+			wantParams: account.StatusChangeParams{
+				AccountID: id,
+				NewStatus: account.StatusFullyFrozen,
+				Reason:    "kyc",
+				ActorType: account.ActorTypeAdmin,
+				ActorID:   "admin-1",
+			},
+		},
+		{
+			name:     "change status passes expected status",
+			endpoint: status,
+			req: request{
+				method: http.MethodPatch,
+				target: "/x",
+				pathID: testID,
+				body:   freeze + `,"expected_status":"ACTIVE"}`,
+			},
+			wantStatus:  http.StatusOK,
+			wantMessage: "account status changed",
+			wantParams: account.StatusChangeParams{
+				AccountID:      id,
+				NewStatus:      account.StatusFullyFrozen,
+				ExpectedStatus: &expected,
+				Reason:         "kyc",
+				ActorType:      account.ActorTypeAdmin,
+				ActorID:        "admin-1",
+			},
+		},
+		{
+			name:       "change status rejects unknown status",
+			endpoint:   status,
+			req:        request{method: http.MethodPatch, target: "/x", pathID: testID, body: `{"status":"ASLEEP"}`},
+			wantStatus: http.StatusUnprocessableEntity,
+		},
+		{
+			name:       "change status maps conflict",
+			endpoint:   status,
+			req:        request{method: http.MethodPatch, target: "/x", pathID: testID, body: freeze + `}`},
+			serviceErr: account.ErrStatusConflict,
+			wantStatus: http.StatusConflict,
+			wantParams: account.StatusChangeParams{
+				AccountID: id,
+				NewStatus: account.StatusFullyFrozen,
+				Reason:    "kyc",
+				ActorType: account.ActorTypeAdmin,
+				ActorID:   "admin-1",
+			},
+		},
+		{
+			name:       "status history first page",
+			endpoint:   history,
+			req:        request{method: http.MethodGet, target: "/x?limit=5", pathID: testID},
+			wantStatus: http.StatusOK,
+			wantParams: account.ListAccountStatusHistoryParams{AccountID: id, Limit: 5},
+		},
+		{
+			name:     "status history with cursor",
+			endpoint: history,
+			req: request{
+				method: http.MethodGet,
+				target: "/x?cursor=" + testID + "&cursor_created_at=2026-03-04T05:06:07Z",
+				pathID: testID,
+			},
+			wantStatus: http.StatusOK,
+			wantParams: account.ListAccountStatusHistoryParams{
+				AccountID:       id,
+				CursorID:        uuid.NullUUID{UUID: id, Valid: true},
+				CursorCreatedAt: &cursorAt,
+			},
+		},
+		{
+			name:       "status history rejects cursor without created_at",
+			endpoint:   history,
+			req:        request{method: http.MethodGet, target: "/x?cursor=" + testID, pathID: testID},
+			wantStatus: http.StatusUnprocessableEntity,
+		},
+		{
+			name:     "status history rejects created_at without cursor",
+			endpoint: history,
+			req: request{
+				method: http.MethodGet,
+				target: "/x?cursor_created_at=2026-03-04T05:06:07Z",
+				pathID: testID,
+			},
+			wantStatus: http.StatusUnprocessableEntity,
+		},
+	})
+}
+
 // TestAccountHandlers_Errors runs every path-ID account endpoint through the
 // error matrix, so each handler's decode-failure and service-failure branches
 // are pinned, not just the happy path.
@@ -232,6 +354,25 @@ func TestAccountHandlers_Errors(t *testing.T) {
 			name:     "snapshot",
 			endpoint: func(h handler.Handler) http.HandlerFunc { return h.CreateAccountSnapshot },
 			req:      request{method: http.MethodPost, target: "/x", body: `{"reason":"eod"}`},
+		},
+		{
+			name:     "latest snapshot",
+			endpoint: func(h handler.Handler) http.HandlerFunc { return h.GetLatestAccountSnapshot },
+			req:      request{method: http.MethodGet, target: "/x"},
+		},
+		{
+			name:     "change status",
+			endpoint: func(h handler.Handler) http.HandlerFunc { return h.ChangeAccountStatus },
+			req: request{
+				method: http.MethodPatch,
+				target: "/x",
+				body:   `{"status":"CLOSED","reason":"r","actor_id":"a"}`,
+			},
+		},
+		{
+			name:     "status history",
+			endpoint: func(h handler.Handler) http.HandlerFunc { return h.ListAccountStatusHistory },
+			req:      request{method: http.MethodGet, target: "/x"},
 		},
 	}
 

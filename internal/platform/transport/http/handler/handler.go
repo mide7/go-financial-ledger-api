@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
+	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/httputil"
 )
@@ -21,6 +22,16 @@ type Handler interface {
 	GetAccountStatementEntries(w http.ResponseWriter, r *http.Request)
 	ReconcileAccount(w http.ResponseWriter, r *http.Request)
 	CreateAccountSnapshot(w http.ResponseWriter, r *http.Request)
+	GetLatestAccountSnapshot(w http.ResponseWriter, r *http.Request)
+	ChangeAccountStatus(w http.ResponseWriter, r *http.Request)
+	ListAccountStatusHistory(w http.ResponseWriter, r *http.Request)
+
+	// Discrepancies
+	ListUnresolvedDiscrepancies(w http.ResponseWriter, r *http.Request)
+	ResolveDiscrepancy(w http.ResponseWriter, r *http.Request)
+
+	// Currencies
+	ListCurrencies(w http.ResponseWriter, r *http.Request)
 
 	// Transactions
 	CreateTransaction(w http.ResponseWriter, r *http.Request)
@@ -37,15 +48,22 @@ type HealthCheckHandler interface {
 type handler struct {
 	accountService     account.Service
 	transactionService transaction.Service
+	currencies         currency.Registry
 	log                *slog.Logger
 }
 
-// NewHandler returns a Handler that delegates to the given services and logs
-// unexpected (500) errors to log.
-func NewHandler(accountService account.Service, transactionService transaction.Service, log *slog.Logger) Handler {
+// NewHandler returns a Handler that delegates to the given services and
+// currency registry, and logs unexpected (500) errors to log.
+func NewHandler(
+	accountService account.Service,
+	transactionService transaction.Service,
+	currencies currency.Registry,
+	log *slog.Logger,
+) Handler {
 	return &handler{
 		accountService:     accountService,
 		transactionService: transactionService,
+		currencies:         currencies,
 		log:                log,
 	}
 }

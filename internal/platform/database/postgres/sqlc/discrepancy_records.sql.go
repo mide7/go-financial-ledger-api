@@ -75,11 +75,23 @@ const listUnresolvedDiscrepancies = `-- name: ListUnresolvedDiscrepancies :many
 SELECT id, account_id, raw_ledger_sum, snapshot_balance, calculated_total, discrepancy_amount, last_snapshot_sequence, current_max_sequence, detected_at, resolved_at, resolution_notes
 FROM discrepancy_records
 WHERE resolved_at IS NULL
-ORDER BY detected_at DESC
+    AND (
+        $1::uuid IS NULL
+        OR id < $1::uuid
+    )
+ORDER BY id DESC
+LIMIT $2::int
 `
 
-func (q *Queries) ListUnresolvedDiscrepancies(ctx context.Context) ([]DiscrepancyRecord, error) {
-	rows, err := q.db.Query(ctx, listUnresolvedDiscrepancies)
+type ListUnresolvedDiscrepanciesParams struct {
+	Cursor uuid.NullUUID `json:"cursor"`
+	Limit  int32         `json:"limit"`
+}
+
+// Newest first. ids are UUIDv7 and detected_at defaults to the insert time,
+// so id order is detection order; the cursor is the last id of the previous page.
+func (q *Queries) ListUnresolvedDiscrepancies(ctx context.Context, arg ListUnresolvedDiscrepanciesParams) ([]DiscrepancyRecord, error) {
+	rows, err := q.db.Query(ctx, listUnresolvedDiscrepancies, arg.Cursor, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

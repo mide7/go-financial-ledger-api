@@ -13,6 +13,8 @@ import (
 type Querier interface {
 	// Stores the response for a claimed key. Status is COMPLETED or FAILED.
 	CompleteIdempotencyRecord(ctx context.Context, arg CompleteIdempotencyRecordParams) (int64, error)
+	// Counts the accounts ListAccounts pages through, with the same filters.
+	CountAccounts(ctx context.Context, arg CountAccountsParams) (int64, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	// The stored balance is positive in the account's normal-balance direction
 	// (account_types.normal_balance), so GetAccountBalance and ReconcileAccount can
@@ -51,7 +53,9 @@ type Querier interface {
 	// Newest first. The cursor is the id of the last row on the previous page;
 	// ids are UUIDv7, so id order is creation order. Filters are optional.
 	ListTransactions(ctx context.Context, arg ListTransactionsParams) ([]Transaction, error)
-	ListUnresolvedDiscrepancies(ctx context.Context) ([]DiscrepancyRecord, error)
+	// Newest first. ids are UUIDv7 and detected_at defaults to the insert time,
+	// so id order is detection order; the cursor is the last id of the previous page.
+	ListUnresolvedDiscrepancies(ctx context.Context, arg ListUnresolvedDiscrepanciesParams) ([]DiscrepancyRecord, error)
 	// Share-locks the accounts a transaction posts to, so a concurrent status
 	// change (which takes FOR UPDATE) waits until the posting commits. Ordered by
 	// id so concurrent postings lock in the same order and cannot deadlock.

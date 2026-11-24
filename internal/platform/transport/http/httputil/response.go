@@ -31,6 +31,7 @@ var errorMappings = []errorMapping{
 	{account.ErrAccountNotFound, http.StatusNotFound, "account not found"},
 	{account.ErrInvalidCurrency, http.StatusUnprocessableEntity, "invalid currency code"},
 	{account.ErrInvalidType, http.StatusUnprocessableEntity, "invalid account type"},
+	{account.ErrInvalidSort, http.StatusUnprocessableEntity, "invalid sort"},
 	{account.ErrAccountExists, http.StatusConflict, "account already exists"},
 	{account.ErrDiscrepancyFound, http.StatusConflict, "account balance discrepancy detected"},
 	{account.ErrInvalidDateRange, http.StatusUnprocessableEntity, "start_date must not be after end_date"},

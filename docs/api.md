@@ -63,7 +63,41 @@ The `JSONResponse` middleware wraps every response body:
 
 - `message` is the handler's custom message, or the HTTP status text.
 - For status < 400 the payload is in `data` and `errors` is `null`. For status ≥ 400 it's the reverse.
-- An empty list is returned as `"data": []`.
+- An empty list is returned as an empty `items` array (`[]`).
+
+## Pagination
+
+Every list endpoint except `GET /currencies` (a short, fixed reference list)
+returns one **page** in `data`, never a bare array. `limit` is 1–100 and
+defaults to 20; a `limit` above 100 is 422.
+
+**Cursor pages** (statement entries, status history, discrepancies,
+transactions, withdrawals):
+
+```json
+{
+  "items": [ … ],
+  "limit": 20,
+  "has_more": true,
+  "next_cursor": "0190…",
+  "next_cursor_created_at": "2026-11-20T10:00:00Z"
+}
+```
+
+- `has_more` is exact: the server fetches one extra row to find out.
+- For the next page, send `next_cursor` back as `cursor` with the same filters.
+  Status history also needs `next_cursor_created_at` sent as
+  `cursor_created_at`; the other endpoints don't return it.
+- On the last page `has_more` is `false` and `next_cursor` is `null`.
+
+**Offset pages** (`GET /accounts`, which can be sorted):
+
+```json
+{ "items": [ … ], "page": 2, "limit": 20, "total_count": 45, "has_more": true }
+```
+
+`total_count` comes from a second query, so under concurrent writes it can
+differ slightly from what the pages add up to.
 
 ## Errors
 
@@ -94,6 +128,7 @@ list of field errors:
 | 409 | `account balance discrepancy detected` | Reserved; reconcile currently returns the result with 200 |
 | 422 | `invalid currency code` | Currency unknown or inactive |
 | 422 | `invalid account type` | Type not in the chart of accounts |
+| 422 | `invalid sort` | `GET /accounts` with an unknown `sort_by` or `sort_order` |
 | 422 | `start_date must not be after end_date` | Bad statement window |
 | 422 | `duplicate reference` | Transaction reference already used |
 | 422 | `transaction must contain at least two entries` | Fewer than two legs |
@@ -162,10 +197,13 @@ Returns 409 if the owner already has an account of that type and currency.
 | `page` | ≥ 1, default 1 |
 | `limit` | 1–100, default 20 |
 | `currency` | optional filter, 3 uppercase letters |
-| `type` | optional filter, same values as create |
+| `type` | optional filter; any of the [10 account types](domains/account.md#account-types), including system accounts such as `PLATFORM_CASH`. Unknown values are 422 `invalid account type` |
 | `owner_id` | optional filter, ≤ 64 chars; finds an owner's accounts |
+| `sort_by` | `created_at` (default), `type` or `currency` |
+| `sort_order` | `desc` (default) or `asc` |
 
-Results are sorted newest first (`created_at DESC, id DESC`).
+Returns an [offset page](#pagination) of [accounts](domains/account.md#account).
+Ties are broken by `id`, newest first, so pages are stable.
 
 ### `GET /api/v1/accounts/{id}`
 
@@ -202,21 +240,24 @@ Both dates are required, and `start_date` must not be after `end_date`.
 
 ### `GET /api/v1/accounts/{id}/statement/entries?start_date=…&end_date=…[&limit=…][&cursor=…]`
 
-Returns statement lines **newest first**:
+Returns a [cursor page](#pagination) of statement lines, **newest first**:
 
 ```json
-[
-  { "id": "0190…", "transaction_id": "0190…", "type": "DEBIT", "amount": 250000,
-    "running_balance": 750000, "currency": "NGN", "exponent": 2,
-    "description": "", "entry_sequence": 42, "created_at": "…" }
-]
+{
+  "items": [
+    { "id": "0190…", "transaction_id": "0190…", "type": "DEBIT", "amount": 250000,
+      "running_balance": 750000, "currency": "NGN", "exponent": 2,
+      "description": "", "entry_sequence": 42, "created_at": "…" }
+  ],
+  "limit": 20, "has_more": false, "next_cursor": null
+}
 ```
 
 | Query | Rules |
 |---|---|
 | `start_date`, `end_date` | required. The window is `start_date ≤ created_at < end_date` (end **exclusive**) |
 | `limit` | 1–100, default 20 |
-| `cursor` | the `id` of the last entry on the previous page |
+| `cursor` | the previous page's `next_cursor` |
 
 `running_balance` is the account balance immediately after that entry.
 
@@ -287,28 +328,37 @@ status can't change`). `expected_status` is checked first.
 
 ### `GET /api/v1/accounts/{id}/status/history[?limit=…][&cursor=…&cursor_created_at=…]`
 
-Returns history rows (same shape as above) **newest first**.
+Returns a [cursor page](#pagination) of history rows (same shape as above),
+**newest first**, with `next_cursor` and `next_cursor_created_at`.
 
 | Query | Rules |
 |---|---|
 | `limit` | 1–100, default 20 |
-| `cursor`, `cursor_created_at` | the `id` and `created_at` of the last row on the previous page; send both or neither |
+| `cursor`, `cursor_created_at` | the previous page's `next_cursor` and `next_cursor_created_at`; send both or neither (422) |
 
 ## Discrepancies
 
 A discrepancy is recorded when [reconciliation](#post-apiv1accountsidreconcile)
 finds a mismatch.
 
-### `GET /api/v1/discrepancies`
+### `GET /api/v1/discrepancies[?limit=…][&cursor=…]`
 
-Returns every unresolved discrepancy, newest first. The list is not paginated.
+Returns a [cursor page](#pagination) of unresolved discrepancies, newest first.
+
+| Query | Rules |
+|---|---|
+| `limit` | 1–100, default 20 |
+| `cursor` | the previous page's `next_cursor` |
 
 ```json
-[
-  { "id": "0190…", "account_id": "0190…", "raw_ledger_sum": 750000, "snapshot_balance": 1000000,
-    "calculated_total": 750100, "discrepancy_amount": 100,
-    "last_snapshot_sequence": 40, "current_max_sequence": 42, "detected_at": "…" }
-]
+{
+  "items": [
+    { "id": "0190…", "account_id": "0190…", "raw_ledger_sum": 750000, "snapshot_balance": 1000000,
+      "calculated_total": 750100, "discrepancy_amount": 100,
+      "last_snapshot_sequence": 40, "current_max_sequence": 42, "detected_at": "…" }
+  ],
+  "limit": 20, "has_more": false, "next_cursor": null
+}
 ```
 
 ### `POST /api/v1/discrepancies/{id}/resolve`
@@ -324,7 +374,9 @@ no data. Returns 404 if the discrepancy doesn't exist or is already resolved.
 
 ### `GET /api/v1/currencies`
 
-Returns the active currencies from the in-memory registry, sorted by code:
+Returns the active currencies from the in-memory registry, sorted by code, as
+a plain array. It's the one list that isn't [paginated](#pagination): it's a
+short, fixed reference list.
 
 ```json
 [ { "code": "EUR", "name": "Euro", "exponent": 2, "is_active": true }, … ]
@@ -394,10 +446,9 @@ Returns the transaction with its `entries` in `entry_sequence` order, or 404
 
 ### `GET /api/v1/transactions`
 
-Returns transaction headers **newest first**, without entries (the `entries`
-field is omitted); fetch `GET /transactions/{id}` for the legs. To get the next
-page, pass the last item's `id` as `cursor`; a page shorter than `limit` is the
-last one.
+Returns a [cursor page](#pagination) of transaction headers, **newest first**,
+without entries (the `entries` field is omitted); fetch `GET /transactions/{id}`
+for the legs.
 
 | Query | Rules |
 |---|---|
@@ -406,7 +457,7 @@ last one.
 | `type` | optional, ≤ 64 chars |
 | `currency` | optional, 3 uppercase letters |
 | `start_date`, `end_date` | optional RFC 3339; `start_date ≤ created_at < end_date`. When both are given, `start_date` must be before `end_date`, else 422 `start_date must be before end_date` |
-| `cursor` | the `id` of the last transaction on the previous page |
+| `cursor` | the previous page's `next_cursor` |
 | `limit` | 1–100, default 20 |
 
 ### `POST /api/v1/transactions/{id}/reverse`
@@ -462,7 +513,7 @@ Scaffolded routes; see [Withdrawal domain](domains/withdrawal.md).
 | Route | Body or query |
 |---|---|
 | `POST /api/v1/withdrawals` | `{ "account_id", "amount" (> 0), "processor" (1–64), "reference" (1–128) }` → 201 |
-| `GET /api/v1/withdrawals` | `account_id`, `status` (`PROCESSING`, `SETTLED`, `FAILED`), `cursor`, `limit` (1–100) |
+| `GET /api/v1/withdrawals` | `account_id`, `status` (`PROCESSING`, `SETTLED`, `FAILED`), `cursor`, `limit` (1–100); will return a [cursor page](#pagination) |
 | `GET /api/v1/withdrawals/{id}` | none |
 | `POST /api/v1/withdrawals/{id}/settle` | `{ "processor_reference" (1–128) }` |
 | `POST /api/v1/withdrawals/{id}/fail` | `{ "reason" (1–256) }` |

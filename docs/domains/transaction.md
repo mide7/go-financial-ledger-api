@@ -95,7 +95,7 @@ normal direction. This exact scenario is the integration test
 |---|---|
 | `CreateTransaction` | Implemented. Rejects `type` `REVERSAL` with `ErrReservedType`. The repository enforces [account status](account.md#status) |
 | `GetTransactionDetails(id uuid.UUID)` | Implemented. Returns the header and its entries in `entry_sequence` order; `ErrTransactionNotFound` for an unknown id |
-| `ListTransactions(ListTransactionsParams)` | Implemented. Headers only, newest first. Filters: account (any entry on it), reference, type, currency, half-open `created_at` range (`ErrInvalidDateRange` unless start < end when both are set); keyset cursor on `id`. The limit is clamped to 1–100, default 20 (`DefaultPageLimit`, `MaxPageLimit`) |
+| `ListTransactions(ListTransactionsParams)` | Implemented. Headers only, newest first. Filters: account (any entry on it), reference, type, currency, half-open `created_at` range (`ErrInvalidDateRange` unless start < end when both are set); keyset cursor on `id`. The limit is clamped to 1–100, default 20 (`DefaultPageLimit`, `MaxPageLimit`). Returns a `CursorPaginatedResult` |
 | `ReverseTransaction(ReverseTransactionParams)` | Implemented; see [Reversal](#reversal) |
 | `CreateConversion(CreateConversionParams)` | Scaffolded, 501 ([later-fx](../todo.md#later-scaffolded-routes)). Will post one transaction per currency through `PLATFORM_FX_SUSPENSE`, returning a `Conversion` |
 

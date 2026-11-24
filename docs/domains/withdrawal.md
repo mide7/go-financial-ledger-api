@@ -44,7 +44,7 @@ the item is built.
 |---|---|
 | `CreateWithdrawal(CreateWithdrawalParams)` | 501 |
 | `GetWithdrawal(id)` | 501 |
-| `ListWithdrawals(ListWithdrawalsParams)` | 501; filters by account and status, keyset cursor |
+| `ListWithdrawals(ListWithdrawalsParams)` | 501; filters by account and status, keyset cursor; returns a `CursorPaginatedResult` |
 | `SettleWithdrawal(SettleWithdrawalParams)` | 501 |
 | `FailWithdrawal(FailWithdrawalParams)` | 501 |
 

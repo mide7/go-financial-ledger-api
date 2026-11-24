@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/mide7/go-financial-ledger-api/internal/domain"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
+	"github.com/mide7/go-financial-ledger-api/internal/pagination"
 )
 
 // Page size bounds applied when a listing request omits or exceeds them.
@@ -24,16 +25,25 @@ var ErrInvalidDateRange = errors.New("start date must not be after end date")
 type Service interface {
 	CreateAccount(ctx context.Context, params CreateAccountParams) (*Account, error)
 	GetAccountDetails(ctx context.Context, id uuid.UUID) (*Account, error)
-	ListAccounts(ctx context.Context, params ListAccountsParams) ([]Account, error)
+	ListAccounts(ctx context.Context, params ListAccountsParams) (pagination.OffsetPaginatedResult[Account], error)
 	GetAccountBalance(ctx context.Context, id uuid.UUID) (*GetAccountBalanceResult, error)
 	GetAccountStatementSummary(ctx context.Context, params GetStatementSummaryParams) (*StatementSummary, error)
-	GetAccountStatementEntries(ctx context.Context, params GetStatementEntriesParams) ([]StatementEntry, error)
+	GetAccountStatementEntries(
+		ctx context.Context,
+		params GetStatementEntriesParams,
+	) (pagination.CursorPaginatedResult[StatementEntry], error)
 	ReconcileAccount(ctx context.Context, id uuid.UUID) (*ReconciliationResult, error)
 	CreateAccountSnapshot(ctx context.Context, params CreateAccountSnapshotParams) (*BalanceSnapshot, error)
 	GetLatestAccountSnapshot(ctx context.Context, id uuid.UUID) (*BalanceSnapshot, error)
 	ChangeAccountStatus(ctx context.Context, params StatusChangeParams) (*StatusHistory, error)
-	ListAccountStatusHistory(ctx context.Context, params ListAccountStatusHistoryParams) ([]StatusHistory, error)
-	ListUnresolvedDiscrepancies(ctx context.Context) ([]DiscrepancyRecord, error)
+	ListAccountStatusHistory(
+		ctx context.Context,
+		params ListAccountStatusHistoryParams,
+	) (pagination.CursorPaginatedResult[StatusHistory], error)
+	ListUnresolvedDiscrepancies(
+		ctx context.Context,
+		params ListDiscrepanciesParams,
+	) (pagination.CursorPaginatedResult[DiscrepancyRecord], error)
 	ResolveDiscrepancy(ctx context.Context, id uuid.UUID, notes string) error
 	ReconcileAllAccounts(ctx context.Context) (*ReconciliationRun, error)
 }
@@ -70,11 +80,65 @@ func (s *accountService) GetAccountDetails(ctx context.Context, id uuid.UUID) (*
 	return s.repo.GetByID(ctx, id)
 }
 
-func (s *accountService) ListAccounts(ctx context.Context, params ListAccountsParams) ([]Account, error) {
+// ListAccounts returns one offset page of accounts with the total that match.
+// Page defaults to 1 and Limit is clamped to 1..MaxPageLimit. An unknown Type
+// is ErrInvalidType; an unknown SortBy or OrderBy is ErrInvalidSort.
+func (s *accountService) ListAccounts(
+	ctx context.Context,
+	params ListAccountsParams,
+) (pagination.OffsetPaginatedResult[Account], error) {
+	var none pagination.OffsetPaginatedResult[Account]
+
+	if params.Type != "" && !Type(params.Type).IsValid() {
+		return none, ErrInvalidType
+	}
+
+	if err := normaliseSort(&params); err != nil {
+		return none, err
+	}
+
 	params.Page = max(params.Page, 1)
 	params.Limit = clampLimit(params.Limit)
 
-	return s.repo.List(ctx, params)
+	accounts, err := s.repo.List(ctx, params)
+	if err != nil {
+		return none, err
+	}
+
+	// A second query, so under concurrent writes the total can differ slightly
+	// from what the pages add up to.
+	total, err := s.repo.Count(ctx, params)
+	if err != nil {
+		return none, err
+	}
+
+	return pagination.NewOffsetPaginatedResult(accounts, params.Page, params.Limit, total), nil
+}
+
+// normaliseSort applies the sort defaults and rejects unknown values, so the
+// query's ORDER BY always gets a field it knows with a direction.
+func normaliseSort(params *ListAccountsParams) error {
+	if params.SortBy == "" {
+		params.SortBy = SortByCreatedAt
+	}
+
+	if params.OrderBy == "" {
+		params.OrderBy = SortOrderDesc
+	}
+
+	switch params.SortBy {
+	case SortByCreatedAt, SortByType, SortByCurrency:
+	default:
+		return ErrInvalidSort
+	}
+
+	switch params.OrderBy {
+	case SortOrderAsc, SortOrderDesc:
+	default:
+		return ErrInvalidSort
+	}
+
+	return nil
 }
 
 func (s *accountService) GetAccountBalance(ctx context.Context, id uuid.UUID) (*GetAccountBalanceResult, error) {
@@ -95,14 +159,22 @@ func (s *accountService) GetAccountStatementSummary(
 func (s *accountService) GetAccountStatementEntries(
 	ctx context.Context,
 	params GetStatementEntriesParams,
-) ([]StatementEntry, error) {
+) (pagination.CursorPaginatedResult[StatementEntry], error) {
 	if params.StartDate.After(params.EndDate) {
-		return nil, ErrInvalidDateRange
+		return pagination.CursorPaginatedResult[StatementEntry]{}, ErrInvalidDateRange
 	}
 
-	params.Limit = clampLimit(params.Limit)
+	limit := clampLimit(params.Limit)
+	params.Limit = pagination.FetchLimit(limit)
 
-	return s.repo.ListStatementEntries(ctx, params)
+	entries, err := s.repo.ListStatementEntries(ctx, params)
+	if err != nil {
+		return pagination.CursorPaginatedResult[StatementEntry]{}, err
+	}
+
+	return pagination.NewCursorPaginatedResult(entries, limit, func(e StatementEntry) pagination.Cursor {
+		return pagination.Cursor{ID: e.ID}
+	}), nil
 }
 
 // ReconcileAccount recomputes the balance from the ledger and compares it with the
@@ -194,14 +266,35 @@ func (s *accountService) ChangeAccountStatus(ctx context.Context, params StatusC
 func (s *accountService) ListAccountStatusHistory(
 	ctx context.Context,
 	params ListAccountStatusHistoryParams,
-) ([]StatusHistory, error) {
-	params.Limit = clampLimit(params.Limit)
+) (pagination.CursorPaginatedResult[StatusHistory], error) {
+	limit := clampLimit(params.Limit)
+	params.Limit = pagination.FetchLimit(limit)
 
-	return s.repo.ListAccountStatusHistory(ctx, params)
+	history, err := s.repo.ListAccountStatusHistory(ctx, params)
+	if err != nil {
+		return pagination.CursorPaginatedResult[StatusHistory]{}, err
+	}
+
+	return pagination.NewCursorPaginatedResult(history, limit, func(h StatusHistory) pagination.Cursor {
+		return pagination.Cursor{ID: h.ID, CreatedAt: h.CreatedAt}
+	}), nil
 }
 
-func (s *accountService) ListUnresolvedDiscrepancies(ctx context.Context) ([]DiscrepancyRecord, error) {
-	return s.repo.ListUnresolvedDiscrepancies(ctx)
+func (s *accountService) ListUnresolvedDiscrepancies(
+	ctx context.Context,
+	params ListDiscrepanciesParams,
+) (pagination.CursorPaginatedResult[DiscrepancyRecord], error) {
+	limit := clampLimit(params.Limit)
+	params.Limit = pagination.FetchLimit(limit)
+
+	records, err := s.repo.ListUnresolvedDiscrepancies(ctx, params)
+	if err != nil {
+		return pagination.CursorPaginatedResult[DiscrepancyRecord]{}, err
+	}
+
+	return pagination.NewCursorPaginatedResult(records, limit, func(d DiscrepancyRecord) pagination.Cursor {
+		return pagination.Cursor{ID: d.ID}
+	}), nil
 }
 
 func (s *accountService) ResolveDiscrepancy(ctx context.Context, id uuid.UUID, notes string) error {

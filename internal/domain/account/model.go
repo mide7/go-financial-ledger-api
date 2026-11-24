@@ -24,6 +24,7 @@ var (
 	ErrStatusConflict      = errors.New("account is not in the expected status")
 	ErrStatusUnchanged     = errors.New("account is already in that status")
 	ErrAccountClosed       = errors.New("account is closed; its status can't change")
+	ErrInvalidSort         = errors.New("invalid sort: sort_by must be created_at, type or currency and sort_order asc or desc")
 	ErrDiscrepancyNotFound = errors.New("discrepancy not found or already resolved")
 )
 

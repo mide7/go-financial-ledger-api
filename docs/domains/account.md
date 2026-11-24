@@ -111,16 +111,16 @@ The API records every caller as an `ADMIN` actor, with a self-reported
 |---|---|
 | `CreateAccount` | Type must be valid; currency must be active in the registry |
 | `GetAccountDetails` | `ErrAccountNotFound` if missing |
-| `ListAccounts` | Page < 1 becomes 1; limit < 1 becomes `DefaultPageLimit` (20); limit is capped at `MaxPageLimit` (100) |
+| `ListAccounts` | Returns an `OffsetPaginatedResult` with `total_count` (from `Repository.Count`). Page < 1 becomes 1; limit < 1 becomes `DefaultPageLimit` (20); limit is capped at `MaxPageLimit` (100). `Type` may be any account type (`ErrInvalidType` otherwise). `SortBy` (`created_at`, `type`, `currency`) defaults to `created_at` and `OrderBy` (`asc`, `desc`) to `desc`; anything else is `ErrInvalidSort` |
 | `GetAccountBalance` | Snapshot + delta, normal-balance positive, with an exact `balance_major` |
 | `GetAccountStatementSummary` | `ErrInvalidDateRange` if start > end |
-| `GetAccountStatementEntries` | Same date check; limit defaults and caps as above |
+| `GetAccountStatementEntries` | Same date check; limit defaults and caps as above. Returns a `CursorPaginatedResult` (cursor: entry id) |
 | `ReconcileAccount` | See below; records a discrepancy when found |
 | `CreateAccountSnapshot` | Account must exist; logs `reason` |
 | `GetLatestAccountSnapshot` | `ErrSnapshotNotFound` if none |
 | `ChangeAccountStatus` | `ErrInvalidStatus`, `ErrInvalidActorType`, `ErrStatusConflict`; logs the change |
-| `ListAccountStatusHistory` | Limit defaults and caps as above |
-| `ListUnresolvedDiscrepancies` | Newest first, unpaginated |
+| `ListAccountStatusHistory` | Limit defaults and caps as above. Returns a `CursorPaginatedResult` (cursor: id and `created_at`) |
+| `ListUnresolvedDiscrepancies(ListDiscrepanciesParams)` | Newest first (keyset on `id`, which is UUIDv7, so detection order). Limit defaults and caps as above. Returns a `CursorPaginatedResult` |
 | `ResolveDiscrepancy` | `ErrDiscrepancyNotFound` if unknown or already resolved |
 | `ReconcileAllAccounts` | Scaffolded, 501 ([later-reconcile-all](../todo.md#later-scaffolded-routes)). Will page through the repository's `ListAccountIDs` and reconcile each account, returning a `ReconciliationRun` |
 
@@ -189,3 +189,4 @@ notes (`resolved_at`, `resolution_notes`). These aren't exposed through the API 
 | `ErrStatusConflict` | 409 |
 | `ErrDiscrepancyNotFound` | 404 |
 | `ErrStatusUnchanged`, `ErrAccountClosed` | 409 |
+| `ErrInvalidSort` | 422 |

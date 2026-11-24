@@ -1,49 +1,85 @@
-// Package pagination provides result envelopes for offset- and cursor-paginated listings.
+// Package pagination provides the page envelopes every listing endpoint
+// returns, for offset- and cursor-paginated results.
 package pagination
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // OffsetPaginatedResult is one page of an offset-paginated listing.
 type OffsetPaginatedResult[T any] struct {
 	Items      []T   `json:"items"`
-	Limit      int64 `json:"limit"`
-	Page       int64 `json:"page"`
+	Page       int   `json:"page"`
+	Limit      int   `json:"limit"`
 	TotalCount int64 `json:"total_count"`
 	HasMore    bool  `json:"has_more"`
 }
 
-// NewOffsetPaginatedResult builds a page result. page is 1-based.
-func NewOffsetPaginatedResult[T any](items []T, limit, page, totalCount int64) OffsetPaginatedResult[T] {
-	offset := (page - 1) * limit
+// NewOffsetPaginatedResult builds page (1-based) of a listing of totalCount
+// items, limit per page. A nil items becomes an empty slice, so it encodes as [].
+func NewOffsetPaginatedResult[T any](items []T, page, limit int, totalCount int64) OffsetPaginatedResult[T] {
+	if items == nil {
+		items = []T{}
+	}
+
+	seen := int64(max(page-1, 0)*limit) + int64(len(items))
 
 	return OffsetPaginatedResult[T]{
 		Items:      items,
-		Limit:      limit,
 		Page:       page,
+		Limit:      limit,
 		TotalCount: totalCount,
-		HasMore:    offset+int64(len(items)) < totalCount,
+		HasMore:    seen < totalCount,
 	}
 }
 
-// CursorPaginatedResult is one page of a cursor-paginated listing.
+// Cursor locates the last item of a page. CreatedAt is set only for listings
+// whose keyset includes a timestamp.
+type Cursor struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+}
+
+// CursorPaginatedResult is one page of a cursor-paginated listing. To fetch the
+// next page, pass NextCursor (and NextCursorCreatedAt, when present) back as
+// the request's cursor parameters. Both are null on the last page.
 type CursorPaginatedResult[T any] struct {
-	Items          []T     `json:"items"`
-	Limit          int64   `json:"limit"`
-	NextCursorID   *string `json:"next_cursor_id"`
-	NextCursorTime *string `json:"next_cursor_time"`
-	HasMore        bool    `json:"has_more"`
+	Items               []T        `json:"items"`
+	Limit               int32      `json:"limit"`
+	HasMore             bool       `json:"has_more"`
+	NextCursor          *uuid.UUID `json:"next_cursor"`
+	NextCursorCreatedAt *time.Time `json:"next_cursor_created_at,omitempty"`
 }
 
-// NewCursorPaginatedResult builds a page result. HasMore is true when the page is full,
-// so a final page of exactly limit items reports one extra, empty page.
-func NewCursorPaginatedResult[T any](
-	items []T,
-	limit int64,
-	nextCursorID, nextCursorTime *string,
-) CursorPaginatedResult[T] {
-	return CursorPaginatedResult[T]{
-		Items:          items,
-		Limit:          limit,
-		NextCursorID:   nextCursorID,
-		NextCursorTime: nextCursorTime,
-		HasMore:        len(items) == int(limit),
+// FetchLimit is how many rows to request for a page of limit items: one more,
+// so NewCursorPaginatedResult can tell whether another page exists.
+func FetchLimit(limit int32) int32 {
+	return limit + 1
+}
+
+// NewCursorPaginatedResult builds a page from rows fetched with FetchLimit(limit).
+// Rows beyond limit are dropped and set HasMore; cursorOf gives the cursor of
+// the page's last item. A nil rows becomes an empty slice, so it encodes as [].
+func NewCursorPaginatedResult[T any](rows []T, limit int32, cursorOf func(T) Cursor) CursorPaginatedResult[T] {
+	page := CursorPaginatedResult[T]{Items: rows, Limit: limit}
+
+	if int64(len(rows)) > int64(limit) {
+		page.Items = rows[:limit]
+		page.HasMore = true
+
+		next := cursorOf(page.Items[len(page.Items)-1])
+		page.NextCursor = &next.ID
+
+		if !next.CreatedAt.IsZero() {
+			page.NextCursorCreatedAt = &next.CreatedAt
+		}
 	}
+
+	if page.Items == nil {
+		page.Items = []T{}
+	}
+
+	return page
 }

@@ -140,3 +140,9 @@ out in the core migration, and sqlc validates every query against the schema.
   `GetAccountForUpdate` (`SELECT … FOR UPDATE`).
 - `int` values passed to `int32` query parameters go through `toInt32`, which
   rejects out-of-range values instead of wrapping.
+- **Listings** return "up to `limit` rows"; the service asks for one extra to
+  set `has_more` ([pagination](domains/shared.md#internalpagination)). Cursor
+  listings are keyset queries ordered by a unique key (`id DESC`, which is
+  UUIDv7 and so creation order; `(created_at, id)` for status history; `entry_sequence` for
+  statement entries). `ListAccounts` is the one offset listing; `CountAccounts`
+  repeats its filters for `total_count`, and its `ORDER BY` always ends with `id` for stable pages.

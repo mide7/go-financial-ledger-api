@@ -13,6 +13,37 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countAccounts = `-- name: CountAccounts :one
+SELECT COUNT(*)
+FROM accounts
+WHERE (
+        $1::text IS NULL
+        OR owner_id = $1
+    )
+    AND (
+        $2::text IS NULL
+        OR type = $2
+    )
+    AND (
+        $3::text IS NULL
+        OR currency = $3
+    )
+`
+
+type CountAccountsParams struct {
+	OwnerID  pgtype.Text `json:"owner_id"`
+	Type     pgtype.Text `json:"type"`
+	Currency pgtype.Text `json:"currency"`
+}
+
+// Counts the accounts ListAccounts pages through, with the same filters.
+func (q *Queries) CountAccounts(ctx context.Context, arg CountAccountsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAccounts, arg.OwnerID, arg.Type, arg.Currency)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (owner_id, type, currency)
 VALUES ($1, $2, $3)

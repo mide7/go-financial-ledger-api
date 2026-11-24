@@ -17,6 +17,7 @@ type fakeRepo struct {
 
 	created  []CreateTransactionParams
 	listed   []ListTransactionsParams
+	listRows int
 	fetched  []uuid.UUID
 	reversed []ReverseTransactionParams
 }
@@ -33,7 +34,13 @@ func (f *fakeRepo) GetByID(_ context.Context, id uuid.UUID) (*Transaction, error
 
 func (f *fakeRepo) List(_ context.Context, p ListTransactionsParams) ([]Transaction, error) {
 	f.listed = append(f.listed, p)
-	return []Transaction{}, nil
+
+	rows := make([]Transaction, f.listRows)
+	for i := range rows {
+		rows[i].ID = uuid.New()
+	}
+
+	return rows, nil
 }
 
 func (f *fakeRepo) Create(_ context.Context, p CreateTransactionParams) (*Transaction, error) {
@@ -186,8 +193,9 @@ func TestTransactionService_ListTransactions(t *testing.T) {
 				return
 			}
 
-			if len(repo.listed) != 1 || repo.listed[0].Limit != tt.wantLimit {
-				t.Errorf("repository got %+v, want limit %d", repo.listed, tt.wantLimit)
+			// One extra row is fetched to tell whether there's another page.
+			if len(repo.listed) != 1 || repo.listed[0].Limit != tt.wantLimit+1 {
+				t.Errorf("repository got %+v, want limit %d", repo.listed, tt.wantLimit+1)
 			}
 		})
 	}
@@ -238,5 +246,20 @@ func TestTransactionService_Unimplemented(t *testing.T) {
 				t.Errorf("error = %v, want domain.ErrNotImplemented", err)
 			}
 		})
+	}
+}
+
+func TestTransactionService_ListTransactions_Page(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeRepo{listRows: 3}
+
+	page, err := newTestService(repo).ListTransactions(t.Context(), ListTransactionsParams{Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(page.Items) != 2 || !page.HasMore || page.NextCursor == nil || *page.NextCursor != page.Items[1].ID {
+		t.Errorf("page = %+v, want 2 items, has_more and next_cursor = the second item's id", page)
 	}
 }

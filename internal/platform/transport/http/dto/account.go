@@ -35,14 +35,17 @@ type GetAccountDetailsDTO struct {
 }
 
 // ListAccountsDTO holds the query parameters of GET /accounts. Page is 1-based;
-// omitted page and limit fall back to the service defaults.
+// omitted page, limit, sort_by and sort_order fall back to the service
+// defaults. type accepts every account type, including system accounts that
+// can't be created through the API; the service rejects unknown ones.
 type ListAccountsDTO struct {
-	Page     int    `form:"page" validate:"omitempty,gte=1"`
-	Limit    int    `form:"limit" validate:"omitempty,gte=1,lte=100"`
-	Currency string `form:"currency" validate:"omitempty,len=3,uppercase"`
-	OwnerID  string `form:"owner_id" validate:"omitempty,max=64"`
-	// Same oneof list as CreateAccountDTO.Type; the tag cannot be wrapped.
-	Type string `form:"type" validate:"omitempty,oneof=USER_WALLET PLATFORM_ESCROW_LIABILITY PLATFORM_FEE_REVENUE MERCHANT_PAYABLE"`
+	Page      int    `form:"page" validate:"omitempty,gte=1"`
+	Limit     int    `form:"limit" validate:"omitempty,gte=1,lte=100"`
+	Currency  string `form:"currency" validate:"omitempty,len=3,uppercase"`
+	OwnerID   string `form:"owner_id" validate:"omitempty,max=64"`
+	Type      string `form:"type" validate:"omitempty,max=64"`
+	SortBy    string `form:"sort_by" validate:"omitempty,oneof=created_at type currency"`
+	SortOrder string `form:"sort_order" validate:"omitempty,oneof=asc desc"`
 }
 
 // ToDomainParams converts the request to service parameters.
@@ -53,6 +56,8 @@ func (l ListAccountsDTO) ToDomainParams() account.ListAccountsParams {
 		Currency: l.Currency,
 		Type:     l.Type,
 		OwnerID:  l.OwnerID,
+		SortBy:   l.SortBy,
+		OrderBy:  l.SortOrder,
 	}
 }
 

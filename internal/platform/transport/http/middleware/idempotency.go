@@ -59,7 +59,7 @@ func Idempotency(store idempotency.Store, ttl time.Duration, log *slog.Logger) M
 
 			key := values[0]
 			if key == "" || len(key) > MaxIdempotencyKeyLength {
-				writeError(w, http.StatusBadRequest, "Idempotency-Key must be 1–256 characters")
+				writeError(w, http.StatusBadRequest, "Idempotency-Key must be 1-256 characters")
 				return
 			}
 

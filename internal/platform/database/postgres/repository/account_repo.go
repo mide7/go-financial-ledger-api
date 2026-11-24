@@ -100,6 +100,14 @@ func (r *accountRepository) List(ctx context.Context, params account.ListAccount
 }
 
 // Balance & Audit queries.
+func (r *accountRepository) Count(ctx context.Context, params account.ListAccountsParams) (int64, error) {
+	return r.queries.CountAccounts(ctx, sqlc.CountAccountsParams{
+		OwnerID:  optionalText(params.OwnerID),
+		Type:     optionalText(params.Type),
+		Currency: optionalText(params.Currency),
+	})
+}
+
 func (r *accountRepository) GetBalance(
 	ctx context.Context,
 	accountID uuid.UUID,
@@ -348,8 +356,14 @@ func (r *accountRepository) CreateDiscrepancyRecord(
 	return mapToDiscrepancyDomain(&row), nil
 }
 
-func (r *accountRepository) ListUnresolvedDiscrepancies(ctx context.Context) ([]account.DiscrepancyRecord, error) {
-	rows, err := r.queries.ListUnresolvedDiscrepancies(ctx)
+func (r *accountRepository) ListUnresolvedDiscrepancies(
+	ctx context.Context,
+	params account.ListDiscrepanciesParams,
+) ([]account.DiscrepancyRecord, error) {
+	rows, err := r.queries.ListUnresolvedDiscrepancies(ctx, sqlc.ListUnresolvedDiscrepanciesParams{
+		Cursor: params.Cursor,
+		Limit:  params.Limit,
+	})
 	if err != nil {
 		return nil, err
 	}

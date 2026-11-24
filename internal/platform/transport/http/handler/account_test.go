@@ -101,6 +101,28 @@ func TestAccountHandlers_BodyAndQuery(t *testing.T) {
 			wantParams: account.ListAccountsParams{Page: 2, Limit: 5, Currency: ngn, Type: "USER_WALLET", OwnerID: "u1"},
 		},
 		{
+			name:     "list passes sort and any account type",
+			endpoint: list,
+			req: request{
+				method: http.MethodGet,
+				target: accountsPath + "?type=PLATFORM_CASH&sort_by=currency&sort_order=asc",
+			},
+			wantStatus: http.StatusOK,
+			wantParams: account.ListAccountsParams{Type: "PLATFORM_CASH", SortBy: "currency", OrderBy: "asc"},
+		},
+		{
+			name:       "list rejects unknown sort_by",
+			endpoint:   list,
+			req:        request{method: http.MethodGet, target: accountsPath + "?sort_by=balance"},
+			wantStatus: http.StatusUnprocessableEntity,
+		},
+		{
+			name:       "list rejects unknown sort_order",
+			endpoint:   list,
+			req:        request{method: http.MethodGet, target: accountsPath + "?sort_order=up"},
+			wantStatus: http.StatusUnprocessableEntity,
+		},
+		{
 			name:       "list rejects limit above 100",
 			endpoint:   list,
 			req:        request{method: http.MethodGet, target: accountsPath + "?limit=500"},

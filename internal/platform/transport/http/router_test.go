@@ -17,6 +17,7 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/withdrawal"
+	"github.com/mide7/go-financial-ledger-api/internal/pagination"
 	httptransport "github.com/mide7/go-financial-ledger-api/internal/platform/transport/http"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handler"
 )
@@ -57,8 +58,11 @@ func (f *fakeAccounts) CreateAccountSnapshot(
 	return &account.BalanceSnapshot{AccountID: p.ID}, nil
 }
 
-func (f *fakeAccounts) ListUnresolvedDiscrepancies(context.Context) ([]account.DiscrepancyRecord, error) {
-	return []account.DiscrepancyRecord{}, nil
+func (f *fakeAccounts) ListUnresolvedDiscrepancies(
+	context.Context,
+	account.ListDiscrepanciesParams,
+) (pagination.CursorPaginatedResult[account.DiscrepancyRecord], error) {
+	return pagination.NewCursorPaginatedResult[account.DiscrepancyRecord](nil, 20, nil), nil
 }
 
 // fakeCurrencies embeds the interface so unexercised methods panic if called.

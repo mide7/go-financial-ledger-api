@@ -27,6 +27,10 @@ type fakeRepo struct {
 	snapshotAccounts []uuid.UUID
 	statusChanges    []StatusChangeParams
 	historyParams    ListAccountStatusHistoryParams
+
+	accountCount      int64
+	discrepancyParams ListDiscrepanciesParams
+	discrepancyRows   int
 }
 
 func (f *fakeRepo) Create(_ context.Context, p CreateAccountParams) (*Account, error) {
@@ -45,6 +49,24 @@ func (f *fakeRepo) GetByID(_ context.Context, id uuid.UUID) (*Account, error) {
 func (f *fakeRepo) List(_ context.Context, p ListAccountsParams) ([]Account, error) {
 	f.listParams = p
 	return nil, nil
+}
+
+func (f *fakeRepo) Count(context.Context, ListAccountsParams) (int64, error) {
+	return f.accountCount, nil
+}
+
+func (f *fakeRepo) ListUnresolvedDiscrepancies(
+	_ context.Context,
+	p ListDiscrepanciesParams,
+) ([]DiscrepancyRecord, error) {
+	f.discrepancyParams = p
+
+	rows := make([]DiscrepancyRecord, f.discrepancyRows)
+	for i := range rows {
+		rows[i].ID = uuid.New()
+	}
+
+	return rows, nil
 }
 
 func (f *fakeRepo) GetStatementSummary(_ context.Context, p GetStatementSummaryParams) (*StatementSummary, error) {
@@ -187,9 +209,10 @@ func TestAccountService_ListAccounts(t *testing.T) {
 				t.Fatalf("ListAccounts() error = %v", err)
 			}
 
-			if repo.listParams.Page != tt.wantPage || repo.listParams.Limit != tt.wantLimit {
-				t.Errorf("queried page=%d limit=%d, want page=%d limit=%d",
-					repo.listParams.Page, repo.listParams.Limit, tt.wantPage, tt.wantLimit)
+			if repo.listParams.Page != tt.wantPage || repo.listParams.Limit != tt.wantLimit ||
+				repo.listParams.SortBy != SortByCreatedAt || repo.listParams.OrderBy != SortOrderDesc {
+				t.Errorf("queried %+v, want page=%d limit=%d sorted created_at desc",
+					repo.listParams, tt.wantPage, tt.wantLimit)
 			}
 		})
 	}
@@ -253,8 +276,9 @@ func TestAccountService_GetAccountStatementEntries(t *testing.T) {
 				t.Fatalf("GetAccountStatementEntries() error = %v, want %v", err, tt.wantErr)
 			}
 
-			if tt.wantErr == nil && repo.entriesParams.Limit != tt.wantLimit {
-				t.Errorf("queried limit = %d, want %d", repo.entriesParams.Limit, tt.wantLimit)
+			// One extra row is fetched to tell whether there's another page.
+			if tt.wantErr == nil && repo.entriesParams.Limit != tt.wantLimit+1 {
+				t.Errorf("queried limit = %d, want %d", repo.entriesParams.Limit, tt.wantLimit+1)
 			}
 		})
 	}
@@ -430,7 +454,7 @@ func TestAccountService_ListAccountStatusHistory(t *testing.T) {
 
 			repo := &fakeRepo{}
 
-			_, err := newTestService(repo).ListAccountStatusHistory(t.Context(), ListAccountStatusHistoryParams{
+			page, err := newTestService(repo).ListAccountStatusHistory(t.Context(), ListAccountStatusHistoryParams{
 				AccountID: uuid.New(),
 				Limit:     tt.limit,
 			})
@@ -438,8 +462,9 @@ func TestAccountService_ListAccountStatusHistory(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if repo.historyParams.Limit != tt.wantLimit {
-				t.Errorf("limit = %d, want %d", repo.historyParams.Limit, tt.wantLimit)
+			if repo.historyParams.Limit != tt.wantLimit+1 || page.Limit != tt.wantLimit {
+				t.Errorf("queried limit = %d, page limit = %d; want %d and %d",
+					repo.historyParams.Limit, page.Limit, tt.wantLimit+1, tt.wantLimit)
 			}
 		})
 	}
@@ -450,5 +475,82 @@ func TestAccountService_ReconcileAllAccounts_NotImplemented(t *testing.T) {
 
 	if _, err := newTestService(&fakeRepo{}).ReconcileAllAccounts(t.Context()); !errors.Is(err, domain.ErrNotImplemented) {
 		t.Errorf("error = %v, want domain.ErrNotImplemented", err)
+	}
+}
+
+func TestAccountService_ListAccounts_Validation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		params  ListAccountsParams
+		wantErr error
+	}{
+		{name: "system account type is accepted", params: ListAccountsParams{Type: string(TypePlatformCash)}},
+		{name: "sort by type ascending", params: ListAccountsParams{SortBy: SortByType, OrderBy: SortOrderAsc}},
+		{name: "unknown type", params: ListAccountsParams{Type: "SAVINGS"}, wantErr: ErrInvalidType},
+		{name: "unknown sort field", params: ListAccountsParams{SortBy: "balance"}, wantErr: ErrInvalidSort},
+		{name: "unknown sort order", params: ListAccountsParams{OrderBy: "sideways"}, wantErr: ErrInvalidSort},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if _, err := newTestService(&fakeRepo{}).ListAccounts(t.Context(), tt.params); !errors.Is(err, tt.wantErr) {
+				t.Errorf("ListAccounts() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestAccountService_ListAccounts_Page(t *testing.T) {
+	t.Parallel()
+
+	page, err := newTestService(&fakeRepo{accountCount: 45}).ListAccounts(t.Context(), ListAccountsParams{Page: 2, Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if page.TotalCount != 45 || page.Page != 2 || page.Limit != 20 || page.Items == nil {
+		t.Errorf("page = %+v, want page 2 of 20 with total 45 and non-nil items", page)
+	}
+}
+
+func TestAccountService_ListUnresolvedDiscrepancies(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		rows        int
+		limit       int32
+		wantItems   int
+		wantHasMore bool
+	}{
+		{name: "extra row means another page", rows: 6, limit: 5, wantItems: 5, wantHasMore: true},
+		{name: "short page is the last", rows: 3, limit: 5, wantItems: 3},
+		{name: "omitted limit uses default", rows: 0, limit: 0, wantItems: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := &fakeRepo{discrepancyRows: tt.rows}
+
+			page, err := newTestService(repo).ListUnresolvedDiscrepancies(t.Context(), ListDiscrepanciesParams{Limit: tt.limit})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(page.Items) != tt.wantItems || page.HasMore != tt.wantHasMore || (page.NextCursor != nil) != tt.wantHasMore {
+				t.Errorf("page = %d items, has_more %v, next %v; want %d, %v",
+					len(page.Items), page.HasMore, page.NextCursor, tt.wantItems, tt.wantHasMore)
+			}
+
+			if wantFetch := clampLimit(tt.limit) + 1; repo.discrepancyParams.Limit != wantFetch {
+				t.Errorf("queried limit = %d, want %d", repo.discrepancyParams.Limit, wantFetch)
+			}
+		})
 	}
 }

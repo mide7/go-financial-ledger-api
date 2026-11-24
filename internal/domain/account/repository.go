@@ -7,7 +7,8 @@ import (
 )
 
 // Repository defines data access capabilities required by the Account domain.
-// Implemented in internal/platform/database/postgres/repository/account.go
+// Implemented in internal/platform/database/postgres/repository/account_repo.go.
+// Single-account lookups return ErrAccountNotFound when the account does not exist.
 type Repository interface {
 	Create(ctx context.Context, params CreateAccountParams) (*Account, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Account, error)
@@ -22,15 +23,15 @@ type Repository interface {
 
 	// Status management
 	ChangeAccountStatus(ctx context.Context, params StatusChangeParams) (*StatusHistory, error)
-	GetAccountStatus(ctx context.Context, accountID uuid.UUID) (AccountStatus, error)
+	GetAccountStatus(ctx context.Context, accountID uuid.UUID) (Status, error)
 	ListAccountStatusHistory(ctx context.Context, params ListAccountStatusHistoryParams) ([]StatusHistory, error)
 
 	// Discrepancy audit trail
-	InsertDiscrepancyRecord(ctx context.Context, r *ReconciliationResult) (*DiscrepancyRecord, error)
+	CreateDiscrepancyRecord(ctx context.Context, params CreateDiscrepancyRecordParams) (*DiscrepancyRecord, error)
 	ListUnresolvedDiscrepancies(ctx context.Context) ([]DiscrepancyRecord, error)
-	ResolveDiscrepancy(ctx context.Context, id, notes string) error
+	ResolveDiscrepancy(ctx context.Context, id uuid.UUID, notes string) error
 
 	// Snapshots
-	CreateBalanceSnapshot(ctx context.Context, accountID string) (*BalanceSnapshot, error)
-	GetLatestSnapshot(ctx context.Context, accountID string) (*BalanceSnapshot, error)
+	CreateBalanceSnapshot(ctx context.Context, accountID uuid.UUID) (*BalanceSnapshot, error)
+	GetLatestSnapshot(ctx context.Context, accountID uuid.UUID) (*BalanceSnapshot, error)
 }

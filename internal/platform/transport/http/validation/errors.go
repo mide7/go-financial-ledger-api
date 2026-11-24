@@ -1,29 +1,17 @@
+// Package validation validates request structs and formats their errors for clients.
 package validation
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
 )
 
+// FieldError is a client-facing validation failure for one field.
 type FieldError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
-}
-
-// WriteValidationErrors writes a FieldError array to the response writer.
-func WriteValidationErrors(w http.ResponseWriter, err error) {
-	details := FormatValidationErrors(err)
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusBadRequest)
-
-	// Only write the errors part — middleware will wrap it
-	_ = json.NewEncoder(w).Encode(details)
 }
 
 // FormatValidationErrors converts a go-playground/validator error to a FieldError array.
@@ -40,40 +28,38 @@ func FormatValidationErrors(err error) []FieldError {
 			Message: msgForTag(fe),
 		})
 	}
+
 	return out
 }
 
+// paramPlaceholder in a tagMessages entry is replaced with the tag's
+// parameter, e.g. the 3 in `len=3`.
+const paramPlaceholder = "{param}"
+
+var tagMessages = map[string]string{
+	"required":  "required",
+	"uuid":      "must be a valid UUID",
+	"gt":        "must be greater than {param}",
+	"gte":       "must be greater than or equal to {param}",
+	"lt":        "must be less than {param}",
+	"lte":       "must be less than or equal to {param}",
+	"len":       "must be exactly {param} characters",
+	"oneof":     "must be one of: [{param}]",
+	"min":       "must be at least {param}",
+	"max":       "must be at most {param}",
+	"uppercase": "must be uppercase",
+	"lowercase": "must be lowercase",
+	"alphanum":  "must be alphanumeric",
+	"isdefault": "is not supported yet; omit this field",
+}
+
 func msgForTag(fe validator.FieldError) string {
-	switch fe.Tag() {
-	case "required":
-		return "required"
-	case "uuid":
-		return "must be a valid UUID"
-	case "gt":
-		return fmt.Sprintf("must be greater than %s", fe.Param())
-	case "gte":
-		return fmt.Sprintf("must be greater than or equal to %s", fe.Param())
-	case "lt":
-		return fmt.Sprintf("must be less than %s", fe.Param())
-	case "lte":
-		return fmt.Sprintf("must be less than or equal to %s", fe.Param())
-	case "len":
-		return fmt.Sprintf("must be exactly %s characters", fe.Param())
-	case "oneof":
-		return fmt.Sprintf("must be one of: [%s]", fe.Param())
-	case "min":
-		return fmt.Sprintf("must be at least %s", fe.Param())
-	case "max":
-		return fmt.Sprintf("must be at most %s", fe.Param())
-	case "uppercase":
-		return "must be uppercase"
-	case "lowercase":
-		return "must be lowercase"
-	case "alphanum":
-		return "must be alphanumeric"
-	default:
+	msg, ok := tagMessages[fe.Tag()]
+	if !ok {
 		return "is invalid"
 	}
+
+	return strings.ReplaceAll(msg, paramPlaceholder, fe.Param())
 }
 
 func toLowerCase(str string) string {

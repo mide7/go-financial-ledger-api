@@ -86,12 +86,16 @@ ORDER BY -- Sort by created_at
     id DESC
 LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
 -- name: GetAccountBalance :one
+-- Balances are positive in the account's normal-balance direction
+-- (account_types.normal_balance), matching snapshots and reconciliation.
 WITH account_info AS (
     SELECT a.id AS account_id,
         a.currency,
-        c.exponent
+        c.exponent,
+        at.normal_balance
     FROM accounts a
         JOIN currencies c ON a.currency = c.code
+        JOIN account_types at ON at.type = a.type
     WHERE a.id = sqlc.arg('account_id')
 ),
 latest_snapshot AS (
@@ -115,49 +119,53 @@ latest_snapshot AS (
             COALESCE(b.balance, 0) + COALESCE(
                 SUM(
                     CASE
-                        WHEN e.type = 'CREDIT' THEN e.amount
-                        WHEN e.type = 'DEBIT' THEN - e.amount
-                        ELSE 0
+                        WHEN e.type = ai.normal_balance THEN e.amount
+                        ELSE - e.amount
                     END
                 ),
                 0
             )
         )::BIGINT AS minor_units
     FROM baseline b
+        CROSS JOIN account_info ai
         LEFT JOIN entries e ON e.account_id = sqlc.arg('account_id')
         AND e.entry_sequence > b.last_entry_sequence
     GROUP BY b.balance
 )
 SELECT ai.currency,
     ai.exponent,
-    rb.minor_units AS balance_minor,
-    (rb.minor_units::NUMERIC / POWER(10, ai.exponent))::NUMERIC AS balance_major
+    rb.minor_units AS balance_minor
 FROM account_info ai
     CROSS JOIN raw_balance rb;
 -- name: GetAccountStatementSummary :one
+-- Opening and closing balances are positive in the account's normal-balance
+-- direction; total_debits and total_credits are unsigned sums.
 WITH account_info AS (
     SELECT a.id AS account_id,
         a.currency,
-        c.exponent
+        c.exponent,
+        at.normal_balance
     FROM accounts a
         JOIN currencies c ON a.currency = c.code
+        JOIN account_types at ON at.type = a.type
     WHERE a.id = sqlc.arg('account_id')
 ),
 prior_activity AS (
     SELECT COALESCE(
             SUM(
                 CASE
-                    WHEN type = 'DEBIT' THEN amount
-                    ELSE - amount
+                    WHEN e.type = ai.normal_balance THEN e.amount
+                    ELSE - e.amount
                 END
             ),
             0
         )::BIGINT AS balance
-    FROM entries
-    WHERE account_id = sqlc.arg('account_id')
+    FROM entries e
+        CROSS JOIN account_info ai
+    WHERE e.account_id = sqlc.arg('account_id')
         AND (
             sqlc.narg('start_date')::timestamptz IS NOT NULL
-            AND created_at < sqlc.narg('start_date')
+            AND e.created_at < sqlc.narg('start_date')
         )
 ),
 period_activity AS (
@@ -196,66 +204,15 @@ SELECT ai.account_id,
     p.balance AS opening_balance,
     pa.total_debits,
     pa.total_credits,
-    (p.balance + pa.total_debits - pa.total_credits)::BIGINT AS closing_balance
+    (
+        p.balance + CASE
+            WHEN ai.normal_balance = 'DEBIT' THEN pa.total_debits - pa.total_credits
+            ELSE pa.total_credits - pa.total_debits
+        END
+    )::BIGINT AS closing_balance
 FROM account_info ai
     CROSS JOIN prior_activity p
     CROSS JOIN period_activity pa;
-WITH base_snapshot AS (
-    SELECT bs.balance,
-        bs.last_entry_sequence
-    FROM balance_snapshots bs
-        JOIN entries se ON se.entry_sequence = bs.last_entry_sequence
-    WHERE bs.account_id = sqlc.arg('account_id')
-        AND se.created_at <= sqlc.arg('start_date')
-    ORDER BY bs.last_entry_sequence DESC
-    LIMIT 1
-), account_history AS (
-    SELECT e.id AS entry_id,
-        e.transaction_id,
-        e.type AS entry_type,
-        e.amount,
-        t.description,
-        e.created_at AS entry_created_at,
-        -- explicit alias, always
-        e.entry_sequence,
-        COALESCE(
-            (
-                SELECT balance
-                FROM base_snapshot
-            ),
-            0
-        ) + SUM(
-            CASE
-                WHEN e.type = 'DEBIT' THEN e.amount
-                ELSE - e.amount
-            END
-        ) OVER (
-            ORDER BY e.entry_sequence ASC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        ) AS running_balance
-    FROM entries e
-        JOIN transactions t ON e.transaction_id = t.id
-    WHERE e.account_id = sqlc.arg('account_id')
-        AND e.entry_sequence > COALESCE(
-            (
-                SELECT last_entry_sequence
-                FROM base_snapshot
-            ),
-            0
-        )
-        AND e.created_at <= sqlc.arg('end_date')
-)
-SELECT entry_id,
-    transaction_id,
-    entry_type,
-    amount,
-    running_balance,
-    description,
-    entry_sequence,
-    entry_created_at AS created_at
-FROM account_history
-WHERE entry_created_at >= sqlc.arg('start_date')
-ORDER BY entry_sequence DESC
-LIMIT sqlc.arg('limit')::int OFFSET sqlc.arg('offset')::int;
 -- name: ListAccountStatementEntries :many
 WITH acct AS (
     SELECT a.id,

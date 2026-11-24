@@ -1,5 +1,7 @@
+// Package pagination provides result envelopes for offset- and cursor-paginated listings.
 package pagination
 
+// OffsetPaginatedResult is one page of an offset-paginated listing.
 type OffsetPaginatedResult[T any] struct {
 	Items      []T   `json:"items"`
 	Limit      int64 `json:"limit"`
@@ -8,6 +10,7 @@ type OffsetPaginatedResult[T any] struct {
 	HasMore    bool  `json:"has_more"`
 }
 
+// NewOffsetPaginatedResult builds a page result. page is 1-based.
 func NewOffsetPaginatedResult[T any](items []T, limit, page, totalCount int64) OffsetPaginatedResult[T] {
 	offset := (page - 1) * limit
 
@@ -20,6 +23,7 @@ func NewOffsetPaginatedResult[T any](items []T, limit, page, totalCount int64) O
 	}
 }
 
+// CursorPaginatedResult is one page of a cursor-paginated listing.
 type CursorPaginatedResult[T any] struct {
 	Items          []T     `json:"items"`
 	Limit          int64   `json:"limit"`
@@ -28,6 +32,8 @@ type CursorPaginatedResult[T any] struct {
 	HasMore        bool    `json:"has_more"`
 }
 
+// NewCursorPaginatedResult builds a page result. HasMore is true when the page is full,
+// so a final page of exactly limit items reports one extra, empty page.
 func NewCursorPaginatedResult[T any](items []T, limit int64, nextCursorID, nextCursorTime *string) CursorPaginatedResult[T] {
 	return CursorPaginatedResult[T]{
 		Items:          items,

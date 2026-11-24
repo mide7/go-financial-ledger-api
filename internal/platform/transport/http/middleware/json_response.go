@@ -1,4 +1,5 @@
-package middlewares
+// Package middleware provides the HTTP middleware chain: recovery, logging and response wrapping.
+package middleware
 
 import (
 	"bytes"
@@ -7,6 +8,7 @@ import (
 	"time"
 )
 
+// StandardResponse is the envelope every JSON response is wrapped in.
 type StandardResponse struct {
 	Status    int    `json:"status"`
 	Message   string `json:"message"`
@@ -15,6 +17,8 @@ type StandardResponse struct {
 	Errors    any    `json:"errors"`
 }
 
+// JSONResponse buffers the handler's output and wraps it in a StandardResponse.
+// Bodies with a status of 400 or above go in Errors, others in Data.
 func JSONResponse(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Initialize the wrapped writer with a live buffer
@@ -38,19 +42,22 @@ func JSONResponse(next http.Handler) http.Handler {
 		// If handler opted out, flush the buffer as-is and return
 		if skip, ok := r.Context().Value(SkipJSONResponse).(bool); ok && skip {
 			w.WriteHeader(wrapped.statusCode)
-			w.Write(wrapped.body.Bytes())
+			_, _ = w.Write(wrapped.body.Bytes()) // client may have gone away; nothing useful to do
+
 			return
 		}
 
 		// Extract custom message if set by handler, otherwise default to http.StatusText
 		message := wrapped.Header().Get(HeaderResponseMessage)
 		w.Header().Del(HeaderResponseMessage)
+
 		if message == "" {
 			message = http.StatusText(wrapped.statusCode)
 		}
 
 		// Safely process inner body without double-encoding
 		var parsedPayload any
+
 		innerBody := bytes.TrimSpace(wrapped.body.Bytes())
 
 		if len(innerBody) > 0 {
@@ -82,6 +89,6 @@ func JSONResponse(next http.Handler) http.Handler {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(wrapped.statusCode)
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response) // headers already sent; cannot report a failure
 	})
 }

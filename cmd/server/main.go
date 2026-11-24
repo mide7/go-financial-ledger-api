@@ -1,3 +1,4 @@
+// Command server runs the ledger HTTP API.
 package main
 
 import (
@@ -15,37 +16,76 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/config"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/account"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/transaction"
-	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres"
+	"github.com/mide7/go-financial-ledger-api/internal/logger"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/repository"
 	"github.com/mide7/go-financial-ledger-api/internal/platform/database/postgres/sqlc"
-	transportHttp "github.com/mide7/go-financial-ledger-api/internal/platform/transport/http"
-	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handlers"
+	httptransport "github.com/mide7/go-financial-ledger-api/internal/platform/transport/http"
+	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/handler"
 )
 
+const serviceName = "ledger-api"
+
 func main() {
-	if err := run(); err != nil {
-		slog.Error("❌ service shutdown due to error", "err", err)
-		os.Exit(1)
-	}
+	os.Exit(start())
 }
 
-func run() error {
+// start loads configuration, builds the logger and runs the server, returning
+// the process exit code. The logger is closed only after the final error is
+// logged, so file outputs receive it.
+func start() int {
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("❌ invalid configuration", "err", err)
+		return 1
+	}
+
+	log, closeLog, err := logger.New(cfg.LoggerOptions(serviceName))
+	if err != nil {
+		slog.Error("❌ invalid logger configuration", "err", err)
+		return 1
+	}
+
+	// Safety net for third-party code and any stray package-level slog call;
+	// application code receives log explicitly.
+	slog.SetDefault(log)
+
+	code := 0
+
+	if err := run(cfg, log); err != nil {
+		log.Error("❌ service shutdown due to error", "err", err)
+
+		code = 1
+	}
+
+	if err := closeLog(); err != nil {
+		fmt.Fprintln(os.Stderr, "close log outputs:", err)
+	}
+
+	return code
+}
+
+func run(cfg *config.Config, log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	// 1. Initialize DB Pool
-	pool, err := pgxpool.New(ctx, config.ENVS.DATABASE_URL)
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("failed to create connection pool: %w", err)
 	}
 	defer pool.Close()
 
-	slog.Info("✅ database connected")
+	// pgxpool connects lazily; ping so a bad DATABASE_URL fails here, not on first query.
+	if err := pool.Ping(ctx); err != nil {
+		return fmt.Errorf("ping database: %w", err)
+	}
+
+	log.Info("✅ database connected")
 
 	// 2. Build Dependency Tree
 	queries := sqlc.New(pool)
 
-	currencyRegistry, err := postgres.NewCurrencyRegistry(ctx, pool, queries)
+	currencyRegistry, err := repository.NewCurrencyRegistry(ctx, pool, queries, log)
 	if err != nil {
 		return fmt.Errorf("failed to create currency registry: %w", err)
 	}
@@ -53,20 +93,19 @@ func run() error {
 	accountRepository := repository.NewAccountRepository(pool, queries)
 	transactionRepository := repository.NewTransactionRepository(pool, queries)
 
-	accountService := account.NewAccountService(accountRepository, currencyRegistry)
+	accountService := account.NewAccountService(accountRepository, currencyRegistry, log)
 	transactionService := transaction.NewTransactionService(transactionRepository, currencyRegistry)
 
-	handler := handlers.NewHandler(accountService, transactionService)
-	healthCheckHandler := handlers.NewHealthCheckHandler(pool)
+	apiHandler := handler.NewHandler(accountService, transactionService, log)
+	healthCheckHandler := handler.NewHealthCheckHandler(pool)
 
-	port := config.ENVS.PORT
-	router := transportHttp.NewRouter(handler, healthCheckHandler)
-	httpServer := transportHttp.NewHttpServer(port, router)
+	router := httptransport.NewRouter(apiHandler, healthCheckHandler)
+	httpServer := httptransport.NewServer(cfg.Port, router, log)
 
 	// 3. Start Server with Error Channel
 	serverErr := make(chan error, 1)
+
 	go func() {
-		slog.Info("🚀 HTTP server starting", "port", port)
 		if err := httpServer.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 		}
@@ -77,7 +116,7 @@ func run() error {
 	case err := <-serverErr:
 		return fmt.Errorf("HTTP server startup failed: %w", err)
 	case <-ctx.Done():
-		slog.Warn("⏳ OS signal received, initiating graceful shutdown sequence...")
+		log.Info("⏳ OS signal received, initiating graceful shutdown")
 	}
 
 	// 5. Graceful Shutdown
@@ -88,6 +127,7 @@ func run() error {
 		return fmt.Errorf("failed to gracefully shutdown HTTP server: %w", err)
 	}
 
-	slog.Warn("✅ graceful shutdown complete")
+	log.Info("✅ graceful shutdown complete")
+
 	return nil
 }

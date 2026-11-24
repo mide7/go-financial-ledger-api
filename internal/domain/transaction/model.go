@@ -1,3 +1,4 @@
+// Package transaction models double-entry ledger transactions and their entries.
 package transaction
 
 import (
@@ -8,6 +9,7 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/domain"
 )
 
+// Errors returned by the transaction service and repository.
 var (
 	ErrDuplicateReference    = errors.New("duplicate reference detect")
 	ErrTransactionNotFound   = errors.New("transaction not found")
@@ -17,8 +19,10 @@ var (
 	ErrInvalidEntryType      = errors.New("invalid entry type")
 	ErrInvalidEntryAmount    = errors.New("entry amount must be greater than zero")
 	ErrInvalidAccountID      = errors.New("account ID cannot be empty")
+	ErrAmountOverflow        = errors.New("total debits or credits exceed the maximum amount")
 )
 
+// Entry is one debit or credit leg of a transaction, in minor units.
 type Entry struct {
 	ID            uuid.UUID        `json:"id"`
 	TransactionID uuid.UUID        `json:"transaction_id"`
@@ -29,6 +33,7 @@ type Entry struct {
 	CreatedAt     time.Time        `json:"created_at"`
 }
 
+// Transaction is a balanced set of entries posted together under a unique reference.
 type Transaction struct {
 	ID                  uuid.UUID     `json:"id"`
 	Reference           string        `json:"reference"`

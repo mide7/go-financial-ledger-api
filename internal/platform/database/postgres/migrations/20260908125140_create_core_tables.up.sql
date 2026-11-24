@@ -73,3 +73,28 @@ CREATE TABLE IF NOT EXISTS entries (
     entry_sequence BIGSERIAL NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- TODO: Implement withdrawal table
+-- CREATE TABLE IF NOT EXISTS withdrawals (
+--     id UUID PRIMARY KEY DEFAULT uuidv7(),
+--     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+--     amount BIGINT NOT NULL CHECK (amount > 0),
+--     currency VARCHAR(3) NOT NULL REFERENCES currencies(code) ON DELETE RESTRICT,
+--     -- ledger-side linkage: which transaction locked the funds,
+--     -- and which one resolved the lock (settled or failed)
+--     lock_transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE RESTRICT,
+--     resolution_transaction_id UUID REFERENCES transactions(id) ON DELETE RESTRICT,
+--     -- external processor-side tracking
+--     processor VARCHAR(64) NOT NULL,            -- e.g. 'PAYSTACK', 'FLUTTERWAVE'
+--     processor_reference VARCHAR(128),           -- their ID for this payout, once known
+--     status VARCHAR(32) NOT NULL DEFAULT 'PROCESSING',
+--     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+--     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+--     resolved_at TIMESTAMPTZ,
+--     CONSTRAINT chk_withdrawal_status CHECK (
+--         status IN ('PROCESSING', 'SETTLED', 'FAILED')
+--     ),
+--     CONSTRAINT uq_withdrawal_processor_reference UNIQUE (processor, processor_reference)
+-- );
+-- CREATE INDEX idx_withdrawals_status_created
+--     ON withdrawals (status, created_at)
+--     WHERE status = 'PROCESSING';  -- fast lookup for the reconciliation job

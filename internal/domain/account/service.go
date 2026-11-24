@@ -2,62 +2,152 @@ package account
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/mide7/go-financial-ledger-api/internal/domain/currency"
 )
 
+// Page size bounds applied when a listing request omits or exceeds them.
+const (
+	DefaultPageLimit = 20
+	MaxPageLimit     = 100
+)
+
+// ErrInvalidDateRange is returned when a statement's start date is after its end date.
+var ErrInvalidDateRange = errors.New("start date must not be after end date")
+
+// Service is the account use-case API consumed by the transport layer.
 type Service interface {
 	CreateAccount(ctx context.Context, params CreateAccountParams) (*Account, error)
 	GetAccountDetails(ctx context.Context, id uuid.UUID) (*Account, error)
 	ListAccounts(ctx context.Context, params ListAccountsParams) ([]Account, error)
-	GetAccountBalance(ctx context.Context, id uuid.UUID) (int64, error)
+	GetAccountBalance(ctx context.Context, id uuid.UUID) (*GetAccountBalanceResult, error)
 	GetAccountStatementSummary(ctx context.Context, params GetStatementSummaryParams) (*StatementSummary, error)
 	GetAccountStatementEntries(ctx context.Context, params GetStatementEntriesParams) ([]StatementEntry, error)
 	ReconcileAccount(ctx context.Context, id uuid.UUID) (*ReconciliationResult, error)
-	CreateAccountSnapshot(ctx context.Context, params CreateAccountSnapshotParams) (*Account, error)
+	CreateAccountSnapshot(ctx context.Context, params CreateAccountSnapshotParams) (*BalanceSnapshot, error)
 }
 
 type accountService struct {
 	repo             Repository
 	currencyRegistry currency.Registry
+	log              *slog.Logger
 }
 
-func NewAccountService(repo Repository, currencyRegistry currency.Registry) Service {
+// NewAccountService returns a Service backed by repo and currencyRegistry that
+// logs through log.
+func NewAccountService(repo Repository, currencyRegistry currency.Registry, log *slog.Logger) Service {
 	return &accountService{
 		repo:             repo,
 		currencyRegistry: currencyRegistry,
+		log:              log,
 	}
 }
 
 func (s *accountService) CreateAccount(ctx context.Context, params CreateAccountParams) (*Account, error) {
-	return nil, nil
+	if !Type(params.Type).IsValid() {
+		return nil, ErrInvalidType
+	}
+
+	if _, active := s.currencyRegistry.Get(currency.Code(params.Currency)); !active {
+		return nil, ErrInvalidCurrency
+	}
+
+	return s.repo.Create(ctx, params)
 }
 
 func (s *accountService) GetAccountDetails(ctx context.Context, id uuid.UUID) (*Account, error) {
-	return nil, nil
+	return s.repo.GetByID(ctx, id)
 }
 
 func (s *accountService) ListAccounts(ctx context.Context, params ListAccountsParams) ([]Account, error) {
-	return nil, nil
+	params.Page = max(params.Page, 1)
+	params.Limit = clampLimit(params.Limit)
+
+	return s.repo.List(ctx, params)
 }
 
-func (s *accountService) GetAccountBalance(ctx context.Context, id uuid.UUID) (int64, error) {
-	return 0, nil
+func (s *accountService) GetAccountBalance(ctx context.Context, id uuid.UUID) (*GetAccountBalanceResult, error) {
+	return s.repo.GetBalance(ctx, id)
 }
 
 func (s *accountService) GetAccountStatementSummary(ctx context.Context, params GetStatementSummaryParams) (*StatementSummary, error) {
-	return nil, nil
+	if params.StartDate.After(params.EndDate) {
+		return nil, ErrInvalidDateRange
+	}
+
+	return s.repo.GetStatementSummary(ctx, params)
 }
 
 func (s *accountService) GetAccountStatementEntries(ctx context.Context, params GetStatementEntriesParams) ([]StatementEntry, error) {
-	return nil, nil
+	if params.StartDate.After(params.EndDate) {
+		return nil, ErrInvalidDateRange
+	}
+
+	params.Limit = clampLimit(params.Limit)
+
+	return s.repo.ListStatementEntries(ctx, params)
 }
 
+// ReconcileAccount recomputes the balance from the ledger and compares it with the
+// latest snapshot. A mismatch is persisted as a DiscrepancyRecord and still
+// returned as a result rather than an error, so callers can inspect the figures.
 func (s *accountService) ReconcileAccount(ctx context.Context, id uuid.UUID) (*ReconciliationResult, error) {
-	return nil, nil
+	result, err := s.repo.Reconcile(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if result.Status != ReconciliationStatusDiscrepancy {
+		return result, nil
+	}
+
+	if _, err := s.repo.CreateDiscrepancyRecord(ctx, CreateDiscrepancyRecordParams{
+		AccountID:            result.AccountID,
+		RawLedgerSum:         result.RawLedgerSum,
+		SnapshotBalance:      result.SnapshotBalance,
+		CalculatedTotal:      result.CalculatedTotal,
+		DiscrepancyAmount:    result.DiscrepancyAmount,
+		LastSnapshotSequence: result.LastSnapshotSequence,
+		CurrentMaxSequence:   result.CurrentMaxSequence,
+	}); err != nil {
+		return nil, fmt.Errorf("record discrepancy: %w", err)
+	}
+
+	s.log.WarnContext(ctx, "balance discrepancy detected",
+		"account_id", result.AccountID,
+		"discrepancy_amount", result.DiscrepancyAmount,
+	)
+
+	return result, nil
 }
 
-func (s *accountService) CreateAccountSnapshot(ctx context.Context, params CreateAccountSnapshotParams) (*Account, error) {
-	return nil, nil
+func (s *accountService) CreateAccountSnapshot(ctx context.Context, params CreateAccountSnapshotParams) (*BalanceSnapshot, error) {
+	if _, err := s.repo.GetByID(ctx, params.ID); err != nil {
+		return nil, err
+	}
+
+	snapshot, err := s.repo.CreateBalanceSnapshot(ctx, params.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	s.log.InfoContext(ctx, "balance snapshot created",
+		"account_id", params.ID,
+		"last_entry_sequence", snapshot.LastEntrySequence,
+		"reason", params.Reason,
+	)
+
+	return snapshot, nil
+}
+
+func clampLimit[T int | int32](limit T) T {
+	if limit < 1 {
+		return DefaultPageLimit
+	}
+
+	return min(limit, MaxPageLimit)
 }

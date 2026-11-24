@@ -16,15 +16,17 @@ WITH current_balance AS (
     SELECT COALESCE(
             SUM(
                 CASE
-                    WHEN type = 'DEBIT' THEN amount
-                    ELSE - amount
+                    WHEN e.type = at.normal_balance THEN e.amount
+                    ELSE - e.amount
                 END
             ),
             0
         )::bigint AS balance,
-        COALESCE(MAX(entry_sequence), 0)::bigint AS last_sequence
-    FROM entries
-    WHERE account_id = $1
+        COALESCE(MAX(e.entry_sequence), 0)::bigint AS last_sequence
+    FROM accounts a
+        JOIN account_types at ON at.type = a.type
+        LEFT JOIN entries e ON e.account_id = a.id
+    WHERE a.id = $1
 )
 INSERT INTO balance_snapshots (account_id, balance, last_entry_sequence)
 SELECT $1,
@@ -34,6 +36,9 @@ FROM current_balance
 RETURNING id, account_id, balance, last_entry_sequence, created_at
 `
 
+// The stored balance is positive in the account's normal-balance direction
+// (account_types.normal_balance), so GetAccountBalance and ReconcileAccount can
+// add later entries to it with the same sign rule.
 func (q *Queries) CreateBalanceSnapshot(ctx context.Context, accountID uuid.UUID) (BalanceSnapshot, error) {
 	row := q.db.QueryRow(ctx, createBalanceSnapshot, accountID)
 	var i BalanceSnapshot

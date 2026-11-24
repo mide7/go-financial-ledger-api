@@ -7,43 +7,50 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/middlewares"
+	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/middleware"
 )
 
-type HttpServer struct {
+// Server is the API's HTTP server with its middleware stack applied.
+type Server struct {
 	server *http.Server
+	log    *slog.Logger
 }
 
-func NewHttpServer(port string, router http.Handler) *HttpServer {
+// NewServer returns a server listening on port (a leading colon is optional).
+// Request logs, recovered panics and net/http's own errors all go to log.
+func NewServer(port string, router http.Handler, log *slog.Logger) *Server {
 	addr := port
 	if !strings.HasPrefix(addr, ":") {
 		addr = ":" + addr
 	}
 
-	middlewareStack := middlewares.Chain(
-		middlewares.Recovery,
-		middlewares.Logging,
-		middlewares.JSONResponse,
+	middlewareStack := middleware.Chain(
+		middleware.Recovery(log),
+		middleware.Logging(log),
+		middleware.JSONResponse,
 	)
 
-	return &HttpServer{
-
+	return &Server{
 		server: &http.Server{
 			Addr:         addr,
 			Handler:      middlewareStack(router),
 			WriteTimeout: 30 * time.Second,
 			ReadTimeout:  10 * time.Second,
 			IdleTimeout:  time.Minute,
+			ErrorLog:     slog.NewLogLogger(log.Handler(), slog.LevelError),
 		},
+		log: log,
 	}
 }
 
-func (s *HttpServer) Start() error {
-	slog.Info("🚀 starting HTTP server", "addr", s.server.Addr)
+// Start listens and serves until the server is stopped. It returns http.ErrServerClosed after Stop.
+func (s *Server) Start() error {
+	s.log.Info("🚀 starting HTTP server", "addr", s.server.Addr)
 	return s.server.ListenAndServe()
 }
 
-func (s *HttpServer) Stop(ctx context.Context) error {
-	slog.Warn("⏳ shutting down HTTP server...")
+// Stop gracefully shuts down the server, waiting for active requests until ctx is done.
+func (s *Server) Stop(ctx context.Context) error {
+	s.log.InfoContext(ctx, "⏳ shutting down HTTP server")
 	return s.server.Shutdown(ctx)
 }

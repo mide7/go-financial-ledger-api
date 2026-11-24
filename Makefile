@@ -16,7 +16,7 @@ DOCKER_IMAGE ?= $(APP_NAME)
 DOCKER_TAG ?= latest
 PORT ?= 8080
 
-.PHONY: help all build run test test-short lint fmt tidy clean migrate migration migrate-up migrate-down sqlc gen-mocks seed docker-build docker-build-dev docker-run docker-run-dev docker-compose-up docker-compose-down docker-clean
+.PHONY: help all build run test test-short test-integration lint fmt tidy clean migrate migration migrate-up migrate-down sqlc gen-mocks seed docker-build docker-build-dev docker-run docker-run-dev docker-compose-up docker-compose-down docker-clean
 
 # Default target when running just 'make'
 .DEFAULT_GOAL := help
@@ -47,6 +47,12 @@ run: build
 test:
 	@echo "Running tests..."
 	@$(GO) test -v -race -cover ./...
+
+## test-integration: Run DB integration tests (TEST_DATABASE_URL: migrated, seeded, may CREATE DATABASE)
+test-integration:
+	@echo "Running integration tests..."
+	@test -n "$(TEST_DATABASE_URL)" || (echo "TEST_DATABASE_URL is not set" && exit 1)
+	@TEST_DATABASE_URL="$(TEST_DATABASE_URL)" $(GO) test -tags integration -race -count=1 -v ./internal/platform/database/... ./cmd/migrate/
 
 ## test-short: Run short unit tests only
 test-short:

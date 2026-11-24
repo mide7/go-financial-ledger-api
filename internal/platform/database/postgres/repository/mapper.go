@@ -15,7 +15,7 @@ func mapToAccountDomain(a *sqlc.Account) *account.Account {
 	return &account.Account{
 		ID:        a.ID,
 		OwnerID:   a.OwnerID,
-		Type:      account.AccountType(a.Type),
+		Type:      account.Type(a.Type),
 		Currency:  currency.Code(a.Currency),
 		CreatedAt: a.CreatedAt,
 		UpdatedAt: a.UpdatedAt,
@@ -52,10 +52,46 @@ func mapToTransactionDomain(t *sqlc.Transaction) *transaction.Transaction {
 	}
 }
 
-func mapStringPointerToAccountStatusPointer(s *string) *account.AccountStatus {
+func mapToDiscrepancyDomain(d *sqlc.DiscrepancyRecord) *account.DiscrepancyRecord {
+	record := &account.DiscrepancyRecord{
+		ID:                   d.ID,
+		AccountID:            d.AccountID,
+		RawLedgerSum:         d.RawLedgerSum,
+		SnapshotBalance:      d.SnapshotBalance,
+		CalculatedTotal:      d.CalculatedTotal,
+		DiscrepancyAmount:    d.DiscrepancyAmount,
+		LastSnapshotSequence: d.LastSnapshotSequence,
+		CurrentMaxSequence:   d.CurrentMaxSequence,
+		DetectedAt:           d.DetectedAt,
+	}
+
+	if d.ResolvedAt.Valid {
+		record.ResolvedAt = &d.ResolvedAt.Time
+	}
+
+	if d.ResolutionNotes.Valid {
+		record.ResolutionNotes = &d.ResolutionNotes.String
+	}
+
+	return record
+}
+
+func mapToSnapshotDomain(s *sqlc.BalanceSnapshot) *account.BalanceSnapshot {
+	return &account.BalanceSnapshot{
+		ID:                s.ID,
+		AccountID:         s.AccountID,
+		Balance:           s.Balance,
+		LastEntrySequence: s.LastEntrySequence,
+		CreatedAt:         s.CreatedAt,
+	}
+}
+
+func mapStringPointerToAccountStatusPointer(s *string) *account.Status {
 	if s == nil {
 		return nil
 	}
-	status := account.AccountStatus(*s)
+
+	status := account.Status(*s)
+
 	return &status
 }

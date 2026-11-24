@@ -1,4 +1,4 @@
-package handlers
+package handler
 
 import (
 	"net/http"
@@ -6,14 +6,12 @@ import (
 	"github.com/mide7/go-financial-ledger-api/internal/platform/transport/http/httputil"
 )
 
+// HealthCheck reports 200 when every dependency responds and 503 otherwise.
 func (h *healthCheckHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
+	dbHealthy := h.db.Ping(r.Context()) == nil
 
-	var dbHealthy bool = true
-	if err := h.dbPool.Ping(r.Context()); err != nil {
-		dbHealthy = false
-	}
 	// TODO: redis health check
-	var redisHealthy bool = true
+	redisHealthy := true
 
 	response := struct {
 		DB    bool `json:"db"`
